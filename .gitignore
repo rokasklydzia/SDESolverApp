@@ -1,0 +1,25 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+iosApp/**/xcuserdata/
+
+# Release signing: never commit keys or their passwords
+keystore.properties
+*.jks
+*.keystore
+
+# Kotlin / tooling caches
+.kotlin/
+captures/
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
