@@ -1,8 +1,11 @@
 package sde.model
 
+import sde.analytic.lognormalPdf
+import sde.analytic.Normal
 import sde.random.RandomSource
 import sde.random.poissonFromUniform
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -46,7 +49,7 @@ class ScalarProcess(
  * Symmetric random walk with steps ±σ√dt. By Donsker's theorem it converges to σW as dt → 0,
  * which is the demo of Brownian motion as a limit of coin flips. Draws one uniform per step.
  */
-class ScaledRandomWalk(val x0: Double = 0.0, val sigma: Double = 1.0) : StochasticProcess, KnownMoments {
+class ScaledRandomWalk(val x0: Double = 0.0, val sigma: Double = 1.0) : StochasticProcess, KnownMoments, KnownDensity {
     override val components = listOf("X")
     override fun initialState() = doubleArrayOf(x0)
 
@@ -57,6 +60,9 @@ class ScaledRandomWalk(val x0: Double = 0.0, val sigma: Double = 1.0) : Stochast
 
     override fun mean(t: Double, x0: Double) = x0
     override fun variance(t: Double, x0: Double) = sigma * sigma * t
+
+    /** The limit as dt → 0, N(x0, σ²t): the walk itself is discrete, which is what the demo shows. */
+    override fun density(t: Double, x0: Double, x: Double) = Normal.pdf(x, x0, sigma * sqrt(t))
 }
 
 /**
@@ -107,7 +113,7 @@ class MertonJumpDiffusion(
     val lambda: Double = 1.0,
     val jumpMean: Double = -0.1,
     val jumpVol: Double = 0.15,
-) : StochasticProcess, KnownMoments {
+) : StochasticProcess, KnownMoments, KnownDensity {
     init { require(lambda >= 0) { "λ cannot be negative" } }
 
     private val k = exp(jumpMean + 0.5 * jumpVol * jumpVol) - 1
@@ -132,5 +138,37 @@ class MertonJumpDiffusion(
         )
         val m = mean(t, x0)
         return secondMoment - m * m
+    }
+
+    /** A Poisson mixture of lognormals: given n jumps, log S(t) ~ N(log S0 + (μ − λk − σ²/2)t + n·m, σ²t + n·δ²). */
+    override fun density(t: Double, x0: Double, x: Double): Double {
+        if (x <= 0) return 0.0
+        val mean = lambda * t
+        var weight = exp(-mean)
+        var total = 0.0
+        var n = 0
+        while (true) {
+            val logMean = ln(x0) + (mu - lambda * k - 0.5 * sigma * sigma) * t + n * jumpMean
+            val logSd = sqrt(sigma * sigma * t + n * jumpVol * jumpVol)
+            total += weight * lognormalPdf(x, logMean, logSd)
+            n++
+            if (n > mean && weight < 1e-12 || n > 200) return total
+            weight *= mean / n
+        }
+    }
+}
+
+/**
+ * The exact density of the given component at time t > 0, or null when no closed form is known
+ * (CIR, Heston, typed formulas). For a scheme with discretisation error this is the density the
+ * simulation is converging to, not the simulation's own.
+ */
+fun StochasticProcess.marginalDensity(component: Int = 0): ((t: Double, x: Double) -> Double)? {
+    if (component != 0) return null
+    return when (this) {
+        is ScalarProcess -> (sde as? KnownDensity)?.let { d -> { t, x -> d.density(t, x0, x) } }
+        is ScaledRandomWalk -> { t, x -> density(t, x0, x) }
+        is MertonJumpDiffusion -> { t, x -> density(t, s0, x) }
+        else -> null
     }
 }

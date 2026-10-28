@@ -40,3 +40,8 @@ interface PathwiseSolution {
 interface ExactTransition {
     fun transition(t: Double, x: Double, dt: Double, dW: Double): Double
 }
+
+/** A model whose density of X(t), started from x0 at time 0, is known in closed form (for t > 0). */
+interface KnownDensity {
+    fun density(t: Double, x0: Double, x: Double): Double
+}
