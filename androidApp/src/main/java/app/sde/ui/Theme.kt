@@ -21,6 +21,8 @@ data class ChartColors(
     val axis: Color,
     val grid: Color,
     val label: Color,
+    /** Distinct colours for curves compared side by side, e.g. left, mid and right point sums. */
+    val series: List<Color>,
 )
 
 private val DarkChart = ChartColors(
@@ -33,6 +35,7 @@ private val DarkChart = ChartColors(
     axis = Color(0xFF8A8F98),
     grid = Color(0x22FFFFFF),
     label = Color(0xFFB5BAC1),
+    series = listOf(Color(0xFF6EA8FE), Color(0xFFFFB454), Color(0xFF5FD39B), Color(0xFFF07FAF)),
 )
 
 private val LightChart = ChartColors(
@@ -45,6 +48,7 @@ private val LightChart = ChartColors(
     axis = Color(0xFF6B7280),
     grid = Color(0x1A000000),
     label = Color(0xFF4B5563),
+    series = listOf(Color(0xFF2563EB), Color(0xFFD9480F), Color(0xFF15803D), Color(0xFFBE185D)),
 )
 
 val LocalChartColors = staticCompositionLocalOf { DarkChart }
