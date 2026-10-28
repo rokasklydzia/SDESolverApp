@@ -95,7 +95,8 @@ fun LabsScreen() {
 // ---------------------------------------------------------------------------------------------
 // Integrals: left, mid and right point sums along one path.
 
-private class IntegratorPreset(val label: String, val drift: String, val diffusion: String, val x0: String)
+/** An integrator dX = μ dt + σ dB with X(0) = x0, as chips in the Labs and Solver tabs. */
+internal class IntegratorPreset(val label: String, val drift: String, val diffusion: String, val x0: String)
 
 private val integrators = listOf(
     IntegratorPreset("Brownian motion", "0", "1", "0"),

@@ -32,6 +32,9 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   it one, and estimates E[M(t)] over many paths. `sde.ito.CovariationSetup` gives ⟨f(t, X), g(t, Y)⟩
   for two SDEs driven by one Brownian path, and `sde.montecarlo.RunningEstimate` follows a Monte Carlo
   estimate as the paths come in.
+- **Symbolic solver:** `sde.expr.Antiderivative` integrates the usual forms (powers, exp, sin, cos,
+  polynomials times them by parts) and checks every answer by differentiating it back;
+  `sde.ito.StochasticIntegral` and `sde.ito.LinearSde` build the closed forms on top of it.
 
 ## The app
 
@@ -46,6 +49,10 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   checks E[M(t)] over 10,000 paths; *Covariation* compares Σ ΔU·ΔV with ∫σ_U σ_V ds and E⟨U, V⟩
   with a closed form; *Monte Carlo* shows plain and antithetic estimates of E[g(X(T))] converging
   to the exact value from the model's density. The course exercises are built in as examples.
+- **Solver:** ∫h(t, X) dX in closed form for Itô, Stratonovich and backward integrals, found by
+  running Itô's formula backwards with a symbolic antiderivative (∫B³dB = B⁴/4 − ∫1.5B² ds), with
+  the Itô-isometry mean and variance and a check on simulated paths; and explicit solutions of
+  linear SDEs dX = (aX + b) dt + (cX + d) dB, with mean and variance when the noise is additive.
 - **Demos:** a scrolling white noise oscilloscope with its integral, and random walks turning into
   Brownian motion as the number of steps grows.
 - **Engine:** the speed test and the list of models.
@@ -82,3 +89,6 @@ to the run as an artifact you can install on a phone.
   dX = X dt + X dB needs g = −6x³, Σ(ΔX)² → ∫4X² dt and Σ X(ΔX)³ → 0 for X = e^{2B−3t},
   ⟨B⁴, B²⟩ = ∫8B⁴ dt with E⟨B⁴, B²⟩ = 8t³, E⟨B³, Y⟩ = 3t²/2 for dY = cos²Y dt + dB, and
   ⟨sin X⟩ = ∫cos²X d⟨X⟩.
+- The solver: antiderivatives, ∫B dB in all three senses, ∫B³ dB and ∫t dB with their leftover
+  integrals, closed forms against Riemann sums on a fine path, Itô-isometry variances, and the
+  OU mean and variance from the linear SDE solution.
