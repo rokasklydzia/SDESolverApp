@@ -60,8 +60,6 @@ private val integrandPresets = listOf(
     "e^(B − t/2)" to "exp(x - t/2)",
 )
 
-private class IntegratorPreset(val label: String, val drift: String, val diffusion: String, val x0: String)
-
 private val solverIntegrators = listOf(
     IntegratorPreset("dB", "0", "1", "0"),
     IntegratorPreset("GBM", "0.1*x", "0.4*x", "1"),
