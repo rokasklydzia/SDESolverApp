@@ -29,7 +29,9 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   (Stratonovich) and right point (backward) sums, p-variation, Σ Y(ΔX)ⁿ and covariation along a path.
 - **Itô's formula:** `sde.ito.ItoFormula` derives the dt and dB terms of f(t, X) symbolically, and
   `sde.ito.MartingaleCheck` decides whether f(t, X) + ∫g ds is a martingale, finds the g that makes
-  it one, and estimates E[M(t)] over many paths.
+  it one, and estimates E[M(t)] over many paths. `sde.ito.CovariationSetup` gives ⟨f(t, X), g(t, Y)⟩
+  for two SDEs driven by one Brownian path, and `sde.montecarlo.RunningEstimate` follows a Monte Carlo
+  estimate as the paths come in.
 
 ## The app
 
@@ -37,10 +39,13 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   mean, 25–75% and 5–95% bands and, beside the chart, the histogram of X(t) against the exact
   density where one exists. Pinch to zoom, drag to pan, double tap to reset. Play, pause, scrub,
   change the speed, or loop with fresh paths. Schemes can be switched for scalar models.
+  *Your own SDE* takes typed drift and diffusion formulas, with a slider for every parameter name.
 - **Labs:** the Itô calculus from the course, hands on. *Integrals* compares the left, mid and
   right point sums on one path as the mesh shrinks; *Variation* shows Σ|ΔX|ᵖ blowing up, settling
   on ⟨X⟩ or vanishing for p = 1, 2, 3; *Martingales* applies Itô's formula to a typed f(t, x) and
-  checks E[M(t)] over 10,000 paths, with the course exercises as examples.
+  checks E[M(t)] over 10,000 paths; *Covariation* compares Σ ΔU·ΔV with ∫σ_U σ_V ds and E⟨U, V⟩
+  with a closed form; *Monte Carlo* shows plain and antithetic estimates of E[g(X(T))] converging
+  to the exact value from the model's density. The course exercises are built in as examples.
 - **Demos:** a scrolling white noise oscilloscope with its integral, and random walks turning into
   Brownian motion as the number of steps grows.
 - **Engine:** the speed test and the list of models.
@@ -75,4 +80,5 @@ to the run as an artifact you can install on a phone.
 - The formula parser, printer and symbolic derivatives (checked against finite differences).
 - The labs against course exercises: tB − ∫B ds and e^{t/2}cos B are martingales, X³ with
   dX = X dt + X dB needs g = −6x³, Σ(ΔX)² → ∫4X² dt and Σ X(ΔX)³ → 0 for X = e^{2B−3t},
-  ⟨B⁴, B²⟩ = ∫8B⁴ dt, and ⟨B, Y⟩ = t for dY = cos²Y dt + dB.
+  ⟨B⁴, B²⟩ = ∫8B⁴ dt with E⟨B⁴, B²⟩ = 8t³, E⟨B³, Y⟩ = 3t²/2 for dY = cos²Y dt + dB, and
+  ⟨sin X⟩ = ∫cos²X d⟨X⟩.
