@@ -1,6 +1,5 @@
 package app.sde.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,14 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,20 +24,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import sde.chart.Ticks
+import sde.analytic.Quadrature
+import sde.catalog.ModelCatalog
+import sde.catalog.PresetModel
 import sde.chart.Viewport
+import sde.expr.CompiledExpr
 import sde.expr.Derivative
 import sde.expr.Evaluator
 import sde.expr.Exprs
 import sde.expr.Parser
 import sde.expr.format
+import sde.ito.CovariationSetup
 import sde.ito.EvaluationPoint
 import sde.ito.ItoFormula
 import sde.ito.ItoSums
@@ -50,14 +45,18 @@ import sde.ito.MartingaleCheck
 import sde.ito.MartingaleRun
 import sde.ito.alongPath
 import sde.model.CustomSde
+import sde.model.marginalDensity
 import sde.model.solveAlong
+import sde.montecarlo.Estimate
+import sde.montecarlo.MonteCarlo
+import sde.montecarlo.MonteCarloSettings
+import sde.montecarlo.RunningEstimate
 import sde.montecarlo.TimeGrid
 import sde.montecarlo.quantileOfSorted
 import sde.random.SeededRandom
-import java.text.DecimalFormatSymbols
 import kotlin.math.abs
 
-private val labs = listOf("Integrals", "Variation", "Martingales")
+private val labs = listOf("Integrals", "Variation", "Martingales", "Covariation", "Monte Carlo")
 
 /** Every lab runs on [0, 1] and reveals its curves over [PLAYBACK_STEPS] animation steps. */
 private const val HORIZON = 1.0
@@ -66,7 +65,7 @@ private const val PLAYBACK_STEPS = 1000
 /** The finest mesh: one path is simulated on it, and coarser meshes see every k-th point of it. */
 private const val FINE_STEPS = 4096
 
-/** Hands-on versions of the course's Itô calculus: integrals, variations and martingales. */
+/** Hands-on versions of the course's Itô calculus: integrals, variations, martingales, covariations and Monte Carlo. */
 @Composable
 fun LabsScreen() {
     var lab by rememberSaveable { mutableIntStateOf(0) }
@@ -76,7 +75,7 @@ fun LabsScreen() {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             labs.forEachIndexed { index, name ->
                 FilterChip(selected = index == lab, onClick = { lab = index }, label = { Text(name) })
             }
@@ -85,7 +84,9 @@ fun LabsScreen() {
         when (lab) {
             0 -> IntegralsLab()
             1 -> VariationLab()
-            else -> MartingaleLab()
+            2 -> MartingaleLab()
+            3 -> CovariationLab()
+            else -> MonteCarloLab()
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -483,60 +484,305 @@ private fun MartingaleChart(run: MartingaleRun, playback: Playback, colors: Char
 }
 
 // ---------------------------------------------------------------------------------------------
-// Small shared pieces.
+// Covariation: ⟨U, V⟩ for U = f(t, X) and V = g(t, Y) driven by one Brownian path.
+
+private class CovariationExample(
+    val label: String,
+    val xDrift: String,
+    val xDiffusion: String,
+    val x0: String,
+    val f: String,
+    val yDrift: String,
+    val yDiffusion: String,
+    val y0: String,
+    val g: String,
+    /** E⟨U, V⟩(t) in closed form, or "" when the course leaves it open. */
+    val expected: String,
+)
+
+private val covariationExamples = listOf(
+    CovariationExample("⟨B, B⟩ = t", "0", "1", "0", "x", "0", "1", "0", "x", "t"),
+    CovariationExample("⟨B⁴, B²⟩", "0", "1", "0", "x^4", "0", "1", "0", "x^2", "8*t^3"),
+    CovariationExample("⟨sin X⟩, X Ornstein–Uhlenbeck", "-x", "0.5", "1", "sin(x)", "-x", "0.5", "1", "sin(x)", ""),
+    CovariationExample("⟨B³, Y⟩, dY = cos²Y dt + dB", "0", "1", "0", "x^3", "cos(x)^2", "1", "0", "x", "1.5*t^2"),
+    CovariationExample("⟨B, t⟩ = 0", "0", "1", "0", "x", "0", "1", "0", "t", "0"),
+)
+
+private const val COVARIATION_PATHS = 2000
+private const val COVARIATION_STEPS = 256
 
 @Composable
-private fun FormulaField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        singleLine = true,
-        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-        modifier = modifier.padding(vertical = 2.dp),
+private fun CovariationLab() {
+    val colors = LocalChartColors.current
+    val start = covariationExamples[1]
+    var xDrift by remember { mutableStateOf(start.xDrift) }
+    var xDiffusion by remember { mutableStateOf(start.xDiffusion) }
+    var x0Text by remember { mutableStateOf(start.x0) }
+    var f by remember { mutableStateOf(start.f) }
+    var yDrift by remember { mutableStateOf(start.yDrift) }
+    var yDiffusion by remember { mutableStateOf(start.yDiffusion) }
+    var y0Text by remember { mutableStateOf(start.y0) }
+    var g by remember { mutableStateOf(start.g) }
+    var expectedText by remember { mutableStateOf(start.expected) }
+    var mesh by remember { mutableIntStateOf(256) }
+    var seed by remember { mutableLongStateOf(1L) }
+    val playback = rememberPlayback(PLAYBACK_STEPS)
+    PlaybackClock(playback, onRunFinished = { seed++ })
+
+    Text("Covariation", style = MaterialTheme.typography.titleMedium)
+    Note(
+        "U = f(t, X) and V = g(t, Y), where X and Y are driven by the same Brownian path. On one path Σ ΔU·ΔV " +
+            "converges to ∫σ_U σ_V ds (dashed), with σ_U and σ_V the dB terms of Itô's formula. Averaged over " +
+            "$COVARIATION_PATHS paths it gives E⟨U, V⟩(t), which you can compare with a closed form.",
     )
-}
+    Spacer(Modifier.height(8.dp))
 
-@Composable
-private fun Formula(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-        modifier = Modifier.padding(vertical = 4.dp),
-    )
-}
+    val setup = remember(xDrift, xDiffusion, x0Text, f, yDrift, yDiffusion, y0Text, g) {
+        runCatching { CovariationSetup(xDrift, xDiffusion, parseNumber(x0Text), f, yDrift, yDiffusion, parseNumber(y0Text), g) }
+    }
+    val expectedFormula = remember(expectedText) {
+        if (expectedText.isBlank()) null else runCatching { Evaluator.compile(Parser.parse(expectedText)) }
+    }
+    var expected by remember { mutableStateOf<Pair<DoubleArray, DoubleArray>?>(null) }
+    LaunchedEffect(setup) {
+        expected = null
+        val s = setup.getOrNull() ?: return@LaunchedEffect
+        expected = s.expectedLimit(TimeGrid(HORIZON, COVARIATION_STEPS), COVARIATION_PATHS)
+    }
 
-@Composable
-private fun Note(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
+    setup.onFailure { ErrorText(it.message ?: "Cannot read these formulas") }
+    setup.onSuccess { s ->
+        Formula("σ_U = ${s.uNoise.format()}   (x = X)")
+        Formula("σ_V = ${s.vNoise.format()}   (x = Y)")
+        Note("d⟨U, V⟩ = σ_U·σ_V dt")
 
-@Composable
-private fun ErrorText(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-}
+        val path = remember(s, seed) {
+            val fine = TimeGrid(HORIZON, FINE_STEPS)
+            s.along(fine, ItoSums.brownianPath(fine, SeededRandom(seed)))
+        }
+        val coarse = TimeGrid(HORIZON, mesh)
+        val realized = remember(path, mesh) { path.realized(FINE_STEPS / mesh) }
+        val expectedGrid = TimeGrid(HORIZON, COVARIATION_STEPS)
+        val closedForm = expectedFormula?.getOrNull()?.let { formula -> DoubleArray(COVARIATION_STEPS + 1) { formula.eval(expectedGrid.time(it), 0.0) } }
 
-/** A short line in each colour with its meaning, one per row. */
-@Composable
-private fun LegendRows(items: List<Pair<Color, String>>) {
-    Column(Modifier.padding(top = 4.dp)) {
-        for ((color, label) in items) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Canvas(Modifier.size(width = 18.dp, height = 10.dp)) {
-                    drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 2.5.dp.toPx())
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val bands = buildList {
+            expected?.let { (mean, se) ->
+                add(Band(expectedGrid, DoubleArray(mean.size) { mean[it] - 2 * se[it] }, DoubleArray(mean.size) { mean[it] + 2 * se[it] }, colors.series[1].copy(alpha = 0.2f)))
             }
         }
+        val curves = buildList {
+            expected?.let { (mean, _) -> add(Curve(expectedGrid, mean, colors.series[1], head = true)) }
+            closedForm?.let { add(Curve(expectedGrid, it, colors.series[2], width = 2.dp, dashed = true)) }
+            add(Curve(path.grid, path.limit, colors.series[0].copy(alpha = 0.6f), width = 1.5.dp, dashed = true))
+            add(Curve(coarse, realized, colors.series[0], head = true))
+        }
+        val fit = Viewport.fit(0.0..HORIZON, valueRange(curves, bands))
+        var viewport by remember(path, expected) { mutableStateOf(fit) }
+        CurveChart(
+            horizon = HORIZON,
+            curves = curves,
+            bands = bands,
+            revealedTime = { playback.revealed / PLAYBACK_STEPS * HORIZON },
+            viewport = viewport,
+            onViewportChange = { viewport = it },
+            onResetViewport = { viewport = fit },
+        )
+        LegendRows(
+            buildList {
+                add(colors.series[0] to "Σ ΔU·ΔV on $mesh steps of this path; dashed: its limit")
+                add(colors.series[1] to "E⟨U, V⟩(t) over $COVARIATION_PATHS paths, ± 2 standard errors")
+                if (closedForm != null) add(colors.series[2] to "your closed form for E⟨U, V⟩(t)")
+            },
+        )
+        val readout = buildString {
+            append("At t = 1: Σ ΔU·ΔV = ${fmt(realized.last())}, its limit on this path ${fmt(path.limit.last())}")
+            expected?.let { (mean, se) -> append(", E⟨U, V⟩(1) ≈ ${fmt(mean.last())} ± ${fmt(se.last())}") }
+            closedForm?.let { append(", closed form ${fmt(it.last())}") }
+            append(".")
+        }
+        Note(readout)
+        if (expected == null) Note("Averaging over $COVARIATION_PATHS paths…")
     }
+    expectedFormula?.exceptionOrNull()?.let { ErrorText("Closed form: ${it.message}") }
+
+    PlaybackControls(playback, onNewPaths = { seed++; playback.restart() })
+
+    SectionTitle("Mesh")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (n in listOf(16, 64, 256, 1024, 4096)) {
+            FilterChip(selected = n == mesh, onClick = { mesh = n }, label = { Text("n = $n") })
+        }
+    }
+    SectionTitle("Examples from the course")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (e in covariationExamples) {
+            val selected = e.xDrift == xDrift && e.xDiffusion == xDiffusion && e.x0 == x0Text && e.f == f &&
+                e.yDrift == yDrift && e.yDiffusion == yDiffusion && e.y0 == y0Text && e.g == g
+            FilterChip(
+                selected = selected,
+                onClick = {
+                    xDrift = e.xDrift; xDiffusion = e.xDiffusion; x0Text = e.x0; f = e.f
+                    yDrift = e.yDrift; yDiffusion = e.yDiffusion; y0Text = e.y0; g = e.g
+                    expectedText = e.expected
+                    playback.restart()
+                },
+                label = { Text(e.label) },
+            )
+        }
+    }
+    SectionTitle("dX = μ dt + σ dB and U = f(t, X)")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FormulaField("μ(t, x)", xDrift, { xDrift = it }, Modifier.weight(1f))
+        FormulaField("σ(t, x)", xDiffusion, { xDiffusion = it }, Modifier.weight(1f))
+        FormulaField("X(0)", x0Text, { x0Text = it }, Modifier.weight(0.6f))
+    }
+    FormulaField("f(t, x)", f, { f = it }, Modifier.fillMaxWidth())
+    SectionTitle("dY = μ dt + σ dB and V = g(t, Y), same B")
+    Note("Write Y as x in these formulas too.")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FormulaField("μ(t, x)", yDrift, { yDrift = it }, Modifier.weight(1f))
+        FormulaField("σ(t, x)", yDiffusion, { yDiffusion = it }, Modifier.weight(1f))
+        FormulaField("Y(0)", y0Text, { y0Text = it }, Modifier.weight(0.6f))
+    }
+    FormulaField("g(t, x)", g, { g = it }, Modifier.fillMaxWidth())
+    SectionTitle("Closed form to compare")
+    FormulaField("E⟨U, V⟩(t), optional", expectedText, { expectedText = it }, Modifier.fillMaxWidth())
 }
 
-private val separator: Char by lazy { DecimalFormatSymbols.getInstance().decimalSeparator }
+// ---------------------------------------------------------------------------------------------
+// Monte Carlo: E[g(X(T))] as the paths come in, plain against antithetic.
 
-private fun fmt(value: Double, decimals: Int = 3): String = Ticks.formatFixed(value, decimals, separator)
+private val payoffs = listOf(
+    "X(T)" to "x",
+    "X(T)²" to "x^2",
+    "call, K = 100" to "max(x - 100, 0)",
+    "put, K = 100" to "max(100 - x, 0)",
+    "digital, K = 100" to "step(x - 100)",
+)
 
-/** A number typed with either decimal separator. */
-private fun parseNumber(text: String): Double =
-    text.trim().replace(',', '.').toDoubleOrNull() ?: throw IllegalArgumentException("'$text' is not a number")
+private const val MC_PATHS = 20_000
+private const val MC_STEPS = 200
+
+private class MonteCarloLabResult(
+    val plain: RunningEstimate,
+    val antithetic: RunningEstimate,
+    /** ∫ g(x) p(T, x) dx when the model has a density, else null. */
+    val exact: Double?,
+)
+
+private suspend fun runMonteCarloLab(model: PresetModel, payoff: CompiledExpr, seed: Long): MonteCarloLabResult {
+    val process = model.create()
+    val grid = TimeGrid(HORIZON, MC_STEPS)
+    val plain = MonteCarlo.run(process, MonteCarloSettings(grid, MC_PATHS, seed, keepPaths = 0))
+    val antithetic = MonteCarlo.run(process, MonteCarloSettings(grid, MC_PATHS, seed, antithetic = true, keepPaths = 0))
+    fun g(values: DoubleArray) = DoubleArray(values.size) { payoff.eval(HORIZON, values[it]) }
+
+    // The random walk's "density" is only its Brownian limit, so it gets no exact value.
+    val pdf = if (model.id == ModelCatalog.randomWalk.id) null else process.marginalDensity()
+    val exact = pdf?.let { p ->
+        val lo = plain.terminalValues.min()
+        val hi = plain.terminalValues.max()
+        val span = maxOf(hi - lo, 1e-6)
+        Quadrature.simpson(lo - span, hi + span) { x -> payoff.eval(HORIZON, x) * p(HORIZON, x) }.takeIf { it.isFinite() }
+    }
+    return MonteCarloLabResult(
+        plain = RunningEstimate.of(g(plain.terminalValues)),
+        antithetic = RunningEstimate.of(g(antithetic.terminalValues), antithetic = true),
+        exact = exact,
+    )
+}
+
+@Composable
+private fun MonteCarloLab() {
+    val colors = LocalChartColors.current
+    var model by remember { mutableStateOf(ModelCatalog.geometricBrownianMotion) }
+    var payoffText by remember { mutableStateOf("max(x - 100, 0)") }
+    var seed by remember { mutableLongStateOf(1L) }
+    val playback = rememberPlayback(PLAYBACK_STEPS)
+    PlaybackClock(playback, onRunFinished = { seed++ })
+
+    Text("Monte Carlo", style = MaterialTheme.typography.titleMedium)
+    Note(
+        "E[g(X(T))] at T = 1 estimated from more and more paths, with a 95% confidence band. The error falls like " +
+            "1/√N, so four times the paths only halve it. Antithetic variates pair every path with its mirror image " +
+            "(Z → −Z), which often buys the same accuracy for far fewer paths.",
+    )
+    Spacer(Modifier.height(8.dp))
+
+    val payoff = remember(payoffText) { runCatching { Evaluator.compile(Parser.parse(payoffText)) } }
+    var result by remember { mutableStateOf<MonteCarloLabResult?>(null) }
+    LaunchedEffect(model, payoff, seed) {
+        result = null
+        val g = payoff.getOrNull() ?: return@LaunchedEffect
+        result = runMonteCarloLab(model, g, seed)
+    }
+
+    payoff.onFailure { ErrorText(it.message ?: "Cannot read this formula") }
+    val current = result
+    if (current == null && payoff.isSuccess) Text("Simulating ${2 * MC_PATHS} paths…", Modifier.padding(24.dp))
+    current?.let { r ->
+        val grid = TimeGrid(MC_PATHS.toDouble(), r.plain.paths.size - 1)
+        fun band(e: RunningEstimate, color: Color) = Band(
+            grid,
+            DoubleArray(e.mean.size) { e.mean[it] - Estimate.Z_95 * e.standardError[it] },
+            DoubleArray(e.mean.size) { e.mean[it] + Estimate.Z_95 * e.standardError[it] },
+            color.copy(alpha = 0.18f),
+        )
+        val bands = listOf(band(r.plain, colors.series[0]), band(r.antithetic, colors.series[2]))
+        val curves = buildList {
+            r.exact?.let { add(Curve(grid, DoubleArray(grid.steps + 1) { _ -> it }, colors.highlight, width = 2.dp, dashed = true)) }
+            add(Curve(grid, r.plain.mean, colors.series[0], head = true))
+            add(Curve(grid, r.antithetic.mean, colors.series[2], head = true))
+        }
+        // The first few hundred paths have wide bands; fit the axes to the rest.
+        val fit = remember(r) {
+            val skip = grid.steps / 10
+            fun tail(values: DoubleArray) = values.copyOfRange(skip, values.size)
+            val trimmed = bands.map { Band(grid, tail(it.lower), tail(it.upper), it.color) }
+            Viewport.fit(0.0..grid.horizon, valueRange(curves.map { Curve(grid, tail(it.values), it.color) }, trimmed))
+        }
+        var viewport by remember(r) { mutableStateOf(fit) }
+        CurveChart(
+            horizon = grid.horizon,
+            curves = curves,
+            bands = bands,
+            revealedTime = { playback.revealed / PLAYBACK_STEPS * grid.horizon },
+            viewport = viewport,
+            onViewportChange = { viewport = it },
+            onResetViewport = { viewport = fit },
+        )
+        Note("Horizontal axis: number of paths N")
+        LegendRows(
+            buildList {
+                add(colors.series[0] to "plain Monte Carlo, 95% band")
+                add(colors.series[2] to "antithetic variates, 95% band")
+                if (r.exact != null) add(colors.highlight to "exact, from the model's density")
+            },
+        )
+        val plain = r.plain.last
+        val anti = r.antithetic.last
+        Note("Plain: ${fmt(plain.mean)} ± ${fmt(plain.standardError)}, 95% CI [${fmt(plain.ci95Low)}, ${fmt(plain.ci95High)}]")
+        Note("Antithetic: ${fmt(anti.mean)} ± ${fmt(anti.standardError)}, 95% CI [${fmt(anti.ci95Low)}, ${fmt(anti.ci95High)}]")
+        if (anti.standardError > 0) {
+            val factor = (plain.standardError / anti.standardError).let { it * it }
+            Note("Antithetic sampling did the work of ${fmt(factor, 1)}× as many plain paths here.")
+        }
+        Note(r.exact?.let { "Exact: ${fmt(it)}" } ?: "No closed-form density for this model, so no exact value.")
+    }
+
+    PlaybackControls(playback, onNewPaths = { seed++; playback.restart() })
+
+    SectionTitle("Model (default parameters)")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (m in ModelCatalog.all) {
+            FilterChip(selected = m.id == model.id, onClick = { model = m; playback.restart() }, label = { Text(m.name) })
+        }
+    }
+    SectionTitle("g(X(T))")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for ((label, formula) in payoffs) {
+            FilterChip(selected = formula == payoffText, onClick = { payoffText = formula }, label = { Text(label) })
+        }
+    }
+    FormulaField("g(x)", payoffText, { payoffText = it }, Modifier.fillMaxWidth())
+}

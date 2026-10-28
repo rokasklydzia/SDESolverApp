@@ -35,13 +35,16 @@ import sde.catalog.Parameter
 import sde.catalog.PresetModel
 import sde.chart.Ticks
 import sde.chart.Viewport
+import sde.expr.format
 import sde.live.Ensemble
+import sde.model.CustomSde
 import sde.model.EulerMaruyama
 import sde.model.Exact
 import sde.model.ExactTransition
 import sde.model.Milstein
 import sde.model.ScalarProcess
 import sde.model.Scheme
+import sde.model.StochasticProcess
 import sde.model.marginalDensity
 import sde.montecarlo.TimeGrid
 import java.text.DecimalFormatSymbols
@@ -61,14 +64,34 @@ fun SimulateScreen() {
     var seed by remember { mutableLongStateOf(1L) }
     var options by remember { mutableStateOf(ChartOptions(shownPaths = 40)) }
 
-    val process = remember(model, values.toMap(), scheme) { model.create(values.toMap(), scheme) }
+    // "Your own SDE": typed formulas, with a slider for every parameter name they use.
+    var custom by remember { mutableStateOf(false) }
+    var drift by remember { mutableStateOf("kappa*(m - x)") }
+    var diffusion by remember { mutableStateOf("sigma*sqrt(abs(x))") }
+    var x0Text by remember { mutableStateOf("1") }
+    val customValues = remember { mutableStateMapOf<String, Double>() }
+    val customNames = remember(drift, diffusion) {
+        runCatching { CustomSde.parameterNames(drift, diffusion) }.getOrDefault(emptyList())
+    }
+    val customParameters = customNames.associateWith { customValues[it] ?: 1.0 }
+    val customAttempt = remember(custom, drift, diffusion, x0Text, customParameters, scheme) {
+        if (!custom) null else runCatching {
+            ScalarProcess(CustomSde(drift, diffusion, customParameters), parseNumber(x0Text), scheme)
+        }
+    }
+    // While a formula is half typed, the chart keeps showing the last one that worked.
+    var lastCustom by remember { mutableStateOf<StochasticProcess?>(null) }
+    LaunchedEffect(customAttempt) { customAttempt?.onSuccess { lastCustom = it } }
+
+    val presetProcess = remember(model, values.toMap(), scheme) { model.create(values.toMap(), scheme) }
+    val process = if (custom) lastCustom ?: presetProcess else presetProcess
     // The bridge must end exactly at its own T.
-    val effectiveHorizon = if (model.id == ModelCatalog.brownianBridge.id) values["T"] ?: 1.0 else horizon
+    val effectiveHorizon = if (!custom && model.id == ModelCatalog.brownianBridge.id) values["T"] ?: 1.0 else horizon
     val grid = remember(effectiveHorizon) { TimeGrid(effectiveHorizon, STEPS) }
 
     var ensemble by remember { mutableStateOf<Ensemble?>(null) }
     var viewport by remember { mutableStateOf(Viewport(0.0, 1.0, -1.0, 1.0)) }
-    var autoFit by remember(model, component) { mutableStateOf(true) }
+    var autoFit by remember(model, component, custom) { mutableStateOf(true) }
     val playback = rememberPlayback(STEPS)
 
     LaunchedEffect(process, grid, seed, component) {
@@ -88,11 +111,16 @@ fun SimulateScreen() {
     ) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (m in ModelCatalog.all) {
-                FilterChip(selected = m.id == model.id, onClick = { model = m; playback.restart() }, label = { Text(m.name) })
+                FilterChip(selected = !custom && m.id == model.id, onClick = { model = m; custom = false; playback.restart() }, label = { Text(m.name) })
             }
+            FilterChip(selected = custom, onClick = { custom = true; scheme = EulerMaruyama; playback.restart() }, label = { Text("Your own SDE") })
         }
         Spacer(Modifier.height(6.dp))
-        Text(model.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            if (custom) "dX = μ(t, X) dt + σ(t, X) dB with your own formulas. Every other name in them becomes a parameter with a slider." else model.summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(8.dp))
 
         val current = ensemble
@@ -121,20 +149,37 @@ fun SimulateScreen() {
             }
         }
 
-        SectionTitle("Parameters")
-        for (parameter in model.parameters) {
-            ParameterSlider(parameter, values[parameter.key] ?: parameter.default) { values[parameter.key] = it }
+        if (custom) {
+            SectionTitle("Your SDE")
+            FormulaField("Drift μ(t, x)", drift, { drift = it }, Modifier.fillMaxWidth())
+            FormulaField("Diffusion σ(t, x)", diffusion, { diffusion = it }, Modifier.fillMaxWidth())
+            FormulaField("X(0)", x0Text, { x0Text = it }, Modifier.fillMaxWidth())
+            customAttempt?.exceptionOrNull()?.let { ErrorText(it.message ?: "Cannot read these formulas") }
+            (lastCustom as? ScalarProcess)?.let { p ->
+                (p.sde as? CustomSde)?.let { Note("Milstein uses ∂σ/∂x = ${it.diffusionSlopeExpr.format()}") }
+            }
         }
-        if (model.id != ModelCatalog.brownianBridge.id) {
+
+        SectionTitle("Parameters")
+        if (custom) {
+            for (name in customNames) {
+                LabeledSlider(name, customParameters.getValue(name), -5.0..5.0) { customValues[name] = it }
+            }
+        } else {
+            for (parameter in model.parameters) {
+                ParameterSlider(parameter, values[parameter.key] ?: parameter.default) { values[parameter.key] = it }
+            }
+        }
+        if (custom || model.id != ModelCatalog.brownianBridge.id) {
             LabeledSlider("Horizon T", horizon, 0.25..10.0) { horizon = it }
         }
 
-        if (model.supportsSchemeChoice) {
+        if (custom || model.supportsSchemeChoice) {
             SectionTitle("Scheme")
             val schemes = buildList<Scheme> {
                 add(EulerMaruyama)
                 add(Milstein)
-                if ((process as? ScalarProcess)?.sde is ExactTransition) add(Exact)
+                if (!custom && (process as? ScalarProcess)?.sde is ExactTransition) add(Exact)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (s in schemes) FilterChip(selected = s == scheme, onClick = { scheme = s }, label = { Text(s.label) })
