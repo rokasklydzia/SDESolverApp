@@ -1,29 +1,37 @@
 package sde.model
 
+import sde.analytic.Normal
+import sde.analytic.lognormalPdf
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
 
 /** Brownian motion with drift: dX = μ dt + σ dW. */
 class ArithmeticBrownianMotion(val mu: Double = 0.0, val sigma: Double = 1.0) :
-    ScalarSde, KnownMoments, PathwiseSolution, ExactTransition {
+    ScalarSde, KnownMoments, KnownDensity, PathwiseSolution, ExactTransition {
     override fun drift(t: Double, x: Double) = mu
     override fun diffusion(t: Double, x: Double) = sigma
     override fun diffusionTimesSlope(t: Double, x: Double) = 0.0
     override fun mean(t: Double, x0: Double) = x0 + mu * t
     override fun variance(t: Double, x0: Double) = sigma * sigma * t
+    override fun density(t: Double, x0: Double, x: Double) = Normal.pdf(x, mean(t, x0), sqrt(variance(t, x0)))
     override fun solution(t: Double, x0: Double, w: Double) = x0 + mu * t + sigma * w
     override fun transition(t: Double, x: Double, dt: Double, dW: Double) = x + mu * dt + sigma * dW
 }
 
 /** Geometric Brownian motion: dS = μS dt + σS dW, the Black–Scholes stock price. */
 class GeometricBrownianMotion(val mu: Double = 0.05, val sigma: Double = 0.2) :
-    ScalarSde, KnownMoments, PathwiseSolution, ExactTransition {
+    ScalarSde, KnownMoments, KnownDensity, PathwiseSolution, ExactTransition {
     override fun drift(t: Double, x: Double) = mu * x
     override fun diffusion(t: Double, x: Double) = sigma * x
     override fun diffusionTimesSlope(t: Double, x: Double) = sigma * sigma * x
     override fun mean(t: Double, x0: Double) = x0 * exp(mu * t)
     override fun variance(t: Double, x0: Double) = x0 * x0 * exp(2 * mu * t) * (exp(sigma * sigma * t) - 1)
+
+    /** S(t) is lognormal: log S(t) ~ N(log S0 + (μ − σ²/2)t, σ²t). */
+    override fun density(t: Double, x0: Double, x: Double) =
+        lognormalPdf(x, ln(x0) + (mu - 0.5 * sigma * sigma) * t, sigma * sqrt(t))
 
     /** S(t) = S0·exp((μ − σ²/2)t + σW(t)), from Itô's lemma applied to log S. */
     override fun solution(t: Double, x0: Double, w: Double) = x0 * exp((mu - 0.5 * sigma * sigma) * t + sigma * w)
@@ -35,7 +43,7 @@ class GeometricBrownianMotion(val mu: Double = 0.05, val sigma: Double = 0.2) :
  * short rate this is the Vasicek model.
  */
 class OrnsteinUhlenbeck(val kappa: Double = 1.0, val longRunMean: Double = 0.0, val sigma: Double = 0.3) :
-    ScalarSde, KnownMoments, ExactTransition {
+    ScalarSde, KnownMoments, KnownDensity, ExactTransition {
     init { require(kappa > 0) { "κ must be positive" } }
 
     override fun drift(t: Double, x: Double) = kappa * (longRunMean - x)
@@ -43,6 +51,7 @@ class OrnsteinUhlenbeck(val kappa: Double = 1.0, val longRunMean: Double = 0.0, 
     override fun diffusionTimesSlope(t: Double, x: Double) = 0.0
     override fun mean(t: Double, x0: Double) = longRunMean + (x0 - longRunMean) * exp(-kappa * t)
     override fun variance(t: Double, x0: Double) = sigma * sigma / (2 * kappa) * (1 - exp(-2 * kappa * t))
+    override fun density(t: Double, x0: Double, x: Double) = Normal.pdf(x, mean(t, x0), sqrt(variance(t, x0)))
 
     /** X(t + dt) | X(t) = x is normal with the mean and variance above; dW/√dt is the standard normal. */
     override fun transition(t: Double, x: Double, dt: Double, dW: Double): Double {
@@ -82,7 +91,7 @@ class CoxIngersollRoss(val kappa: Double = 2.0, val theta: Double = 0.04, val si
  * The drift grows without bound near T, which is what pins the path to b.
  */
 class BrownianBridge(val end: Double = 0.0, val horizon: Double = 1.0, val sigma: Double = 1.0) :
-    ScalarSde, KnownMoments {
+    ScalarSde, KnownMoments, KnownDensity {
     init { require(horizon > 0) { "the horizon T must be positive" } }
 
     override fun drift(t: Double, x: Double): Double {
@@ -94,4 +103,5 @@ class BrownianBridge(val end: Double = 0.0, val horizon: Double = 1.0, val sigma
     override fun diffusionTimesSlope(t: Double, x: Double) = 0.0
     override fun mean(t: Double, x0: Double) = x0 + (end - x0) * t / horizon
     override fun variance(t: Double, x0: Double) = sigma * sigma * t * (horizon - t) / horizon
+    override fun density(t: Double, x0: Double, x: Double) = Normal.pdf(x, mean(t, x0), sqrt(variance(t, x0)))
 }

@@ -8,7 +8,7 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
 | Folder | What it is |
 | --- | --- |
 | `shared/` | The maths engine in pure Kotlin (Kotlin Multiplatform), shared later with iOS. No Android code. |
-| `androidApp/` | The Android app (Jetpack Compose). For now a preview screen with an on-device speed test. |
+| `androidApp/` | The Android app (Jetpack Compose): live animated charts of every model, demos, and an on-device speed test. |
 | `python/` | A numpy notebook that cross-checks the engine's results independently. |
 
 ## The engine
@@ -27,6 +27,19 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   quantiles, histograms, confidence intervals and antithetic variates.
 - **Analytics and Itô sums:** Φ(x), Black–Scholes prices, and running Itô and Stratonovich sums
   and quadratic variation along a Brownian path.
+
+## The app
+
+- **Simulate:** pick a model, move its parameter sliders, and watch paths draw themselves with the
+  mean, 25–75% and 5–95% bands and, beside the chart, the histogram of X(t) against the exact
+  density where one exists. Pinch to zoom, drag to pan, double tap to reset. Play, pause, scrub,
+  change the speed, or loop with fresh paths. Schemes can be switched for scalar models.
+- **Demos:** a scrolling white noise oscilloscope with its integral, and random walks turning into
+  Brownian motion as the number of steps grows.
+- **Engine:** the speed test and the list of models.
+
+Charts are drawn by hand on a Compose `Canvas`; the engine side (`sde.live.Ensemble`,
+`sde.chart.Viewport`, `sde.chart.Ticks`) is plain Kotlin with unit tests.
 
 ## Building
 
