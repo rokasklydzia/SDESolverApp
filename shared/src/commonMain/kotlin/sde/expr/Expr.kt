@@ -71,7 +71,7 @@ object Exprs {
         a == ZERO -> b
         b == ZERO -> a
         b is Expr.Neg -> sub(a, b.operand)
-        b is Expr.Num && b.value < 0 -> sub(a, num(-b.value))
+        hasNegativeCoefficient(b) -> sub(a, neg(b)) // a + (−2x) = a − 2x
         a is Expr.Neg -> sub(b, a.operand) // −a + b = b − a
         else -> combineLikeTerms(a, b, 1.0) ?: Expr.Binary(Expr.Op.ADD, a, b)
     }
@@ -81,6 +81,7 @@ object Exprs {
         b == ZERO -> a
         a == ZERO -> neg(b)
         b is Expr.Neg -> add(a, b.operand)
+        hasNegativeCoefficient(b) -> add(a, neg(b)) // a − (−1) = a + 1
         else -> combineLikeTerms(a, b, -1.0) ?: Expr.Binary(Expr.Op.SUB, a, b)
     }
 
@@ -96,6 +97,9 @@ object Exprs {
             a.isReciprocal() -> return div(b, (a as Expr.Binary).right)
             a is Expr.Neg -> return neg(mul(a.operand, b))
             b is Expr.Neg -> return neg(mul(a, b.operand))
+            // a*(n/d) = (a*n)/d, so that a factor of d in a can cancel.
+            b.isSymbolicQuotient() -> return div(mul(a, (b as Expr.Binary).left), b.right)
+            a.isSymbolicQuotient() -> return div(mul((a as Expr.Binary).left, b), a.right)
         }
         // Constants go in front, multiplied together: 2*(3*x) = 6*x and x*2 = 2*x.
         val (ca, ra) = coefficient(a)
@@ -108,7 +112,20 @@ object Exprs {
         a == ZERO -> ZERO
         b == ONE -> a
         a == b -> ONE
-        else -> Expr.Binary(Expr.Op.DIV, a, b)
+        else -> cancelFactor(a, b) ?: Expr.Binary(Expr.Op.DIV, a, b)
+    }
+
+    private fun Expr.isSymbolicQuotient() = this is Expr.Binary && op == Expr.Op.DIV && right !is Expr.Num
+
+    private fun productFactors(e: Expr): List<Expr> =
+        if (e is Expr.Binary && e.op == Expr.Op.MUL) productFactors(e.left) + productFactors(e.right) else listOf(e)
+
+    /** (k*m*e)/k = m*e: drops a factor of the numerator equal to the whole denominator. */
+    private fun cancelFactor(a: Expr, b: Expr): Expr? {
+        val factors = productFactors(a)
+        val i = factors.indexOf(b)
+        if (i < 0) return null
+        return factors.filterIndexed { j, _ -> j != i }.fold(ONE as Expr) { acc, f -> mul(acc, f) }
     }
 
     fun pow(a: Expr, b: Expr): Expr = when {
@@ -123,12 +140,24 @@ object Exprs {
         return if (args.all { it is Expr.Num }) num(Evaluator.evaluate(call, 0.0, 0.0)) else call
     }
 
-    /** c·r with c a number: 3*x is (3, x), -x is (−1, x), a number c is (c, 1), anything else (1, itself). */
+    /**
+     * c·r with c a number: 3*x is (3, x), x/2 is (0.5, x), -x is (−1, x), a number c is (c, 1),
+     * anything else (1, itself).
+     */
     private fun coefficient(e: Expr): Pair<Double, Expr> = when {
         e is Expr.Num -> e.value to ONE
         e is Expr.Neg -> coefficient(e.operand).let { (c, r) -> -c to r }
         e is Expr.Binary && e.op == Expr.Op.MUL && e.left is Expr.Num -> (e.left as Expr.Num).value to e.right
+        e is Expr.Binary && e.op == Expr.Op.DIV && e.right is Expr.Num && (e.right as Expr.Num).value != 0.0 ->
+            coefficient(e.left).let { (c, r) -> c / (e.right as Expr.Num).value to r }
         else -> 1.0 to e
+    }
+
+    /** True for −3, −2*x and the like, which read better as a subtraction. */
+    fun hasNegativeCoefficient(e: Expr): Boolean = when {
+        e is Expr.Num -> e.value < 0
+        e is Expr.Binary && e.op == Expr.Op.MUL && e.left is Expr.Num -> (e.left as Expr.Num).value < 0
+        else -> false
     }
 
     /** c·r, written as plainly as possible. */
@@ -169,6 +198,28 @@ fun Expr.dependsOn(name: String): Boolean = when (this) {
     is Expr.Binary -> left.dependsOn(name) || right.dependsOn(name)
     is Expr.Call -> args.any { it.dependsOn(name) }
 }
+
+/** The formula with [name] replaced by [value], simplified as it is rebuilt: t → 0 gives F(0, x). */
+fun Expr.substitute(name: String, value: Expr): Expr = when (this) {
+    is Expr.Num -> this
+    is Expr.Var -> if (this.name == name) value else this
+    is Expr.Neg -> Exprs.neg(operand.substitute(name, value))
+    is Expr.Binary -> {
+        val l = left.substitute(name, value)
+        val r = right.substitute(name, value)
+        when (op) {
+            Expr.Op.ADD -> Exprs.add(l, r)
+            Expr.Op.SUB -> Exprs.sub(l, r)
+            Expr.Op.MUL -> Exprs.mul(l, r)
+            Expr.Op.DIV -> Exprs.div(l, r)
+            Expr.Op.POW -> Exprs.pow(l, r)
+        }
+    }
+    is Expr.Call -> Exprs.call(function, *args.map { it.substitute(name, value) }.toTypedArray())
+}
+
+/** True if the formula involves the state x (or X). */
+fun Expr.dependsOnState(): Boolean = names().any { it in Names.STATE }
 
 /** Every variable name in the formula, in order of first appearance. */
 fun Expr.names(): Set<String> = LinkedHashSet<String>().also { collectNames(this, it) }

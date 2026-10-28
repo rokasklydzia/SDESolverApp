@@ -14,4 +14,10 @@ object Quadrature {
         for (i in 1 until n) sum += (if (i % 2 == 1) 4 else 2) * f(a + i * h)
         return sum * h / 3
     }
+
+    /** E[f(m + sd·Z)] for a standard normal Z, by Simpson's rule on ±8 standard deviations; f(m) when sd = 0. */
+    fun gaussianExpectation(mean: Double, sd: Double, intervals: Int = 400, f: (Double) -> Double): Double {
+        if (sd == 0.0) return f(mean)
+        return simpson(-8.0, 8.0, intervals) { z -> f(mean + sd * z) * Normal.pdf(z, 0.0, 1.0) }
+    }
 }
