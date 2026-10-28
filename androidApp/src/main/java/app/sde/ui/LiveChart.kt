@@ -79,22 +79,7 @@ fun LiveChart(
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = { currentOnReset() })
-                }
-                .pointerInput(ensemble.grid.horizon) {
-                    detectTransformGestures { centroid, pan, zoom, _ ->
-                        val plot = plotArea(Size(size.width.toFloat(), size.height.toFloat()), this)
-                        val v = currentViewport
-                        val focusT = v.tMin + (centroid.x - plot.left) / plot.width * v.width
-                        val focusX = v.xMax - (centroid.y - plot.top) / plot.height * v.height
-                        val zoomed = v.zoomed(zoom.toDouble(), zoom.toDouble(), focusT, focusX)
-                        val moved = zoomed
-                            .panned(-pan.x / plot.width * zoomed.width, pan.y / plot.height * zoomed.height)
-                            .constrainedTime(0.0..ensemble.grid.horizon)
-                        currentOnChange(moved)
-                    }
-                },
+                .chartGestures(ensemble.grid.horizon, { currentViewport }, { currentOnChange(it) }, { currentOnReset() }),
         ) {
             val plot = plotArea(size, this)
             drawAxes(plot, viewport, textMeasurer, labelStyle, colors, separator)
@@ -112,20 +97,44 @@ fun LiveChart(
     }
 }
 
+/** Pinch zooms around the fingers, drag pans, double tap resets; time stays within [0, horizon]. */
+internal fun Modifier.chartGestures(
+    horizon: Double,
+    viewport: () -> Viewport,
+    onChange: (Viewport) -> Unit,
+    onReset: () -> Unit,
+): Modifier = this
+    .pointerInput(Unit) {
+        detectTapGestures(onDoubleTap = { onReset() })
+    }
+    .pointerInput(horizon) {
+        detectTransformGestures { centroid, pan, zoom, _ ->
+            val plot = plotArea(Size(size.width.toFloat(), size.height.toFloat()), this)
+            val v = viewport()
+            val focusT = v.tMin + (centroid.x - plot.left) / plot.width * v.width
+            val focusX = v.xMax - (centroid.y - plot.top) / plot.height * v.height
+            val zoomed = v.zoomed(zoom.toDouble(), zoom.toDouble(), focusT, focusX)
+            val moved = zoomed
+                .panned(-pan.x / plot.width * zoomed.width, pan.y / plot.height * zoomed.height)
+                .constrainedTime(0.0..horizon)
+            onChange(moved)
+        }
+    }
+
 data class PlotArea(val left: Float, val top: Float, val right: Float, val bottom: Float) {
     val width get() = right - left
     val height get() = bottom - top
 }
 
 /** Room for the value labels on the left and the time labels below. */
-private fun plotArea(size: Size, density: Density) = with(density) {
+internal fun plotArea(size: Size, density: Density) = with(density) {
     PlotArea(left = 40.dp.toPx(), top = 6.dp.toPx(), right = size.width - 4.dp.toPx(), bottom = size.height - 20.dp.toPx())
 }
 
-private fun toX(plot: PlotArea, v: Viewport, t: Double) = (plot.left + v.fractionT(t) * plot.width).toFloat()
-private fun toY(plot: PlotArea, v: Viewport, x: Double) = (plot.bottom - v.fractionX(x) * plot.height).toFloat()
+internal fun toX(plot: PlotArea, v: Viewport, t: Double) = (plot.left + v.fractionT(t) * plot.width).toFloat()
+internal fun toY(plot: PlotArea, v: Viewport, x: Double) = (plot.bottom - v.fractionX(x) * plot.height).toFloat()
 
-private fun DrawScope.drawAxes(
+internal fun DrawScope.drawAxes(
     plot: PlotArea,
     v: Viewport,
     measurer: TextMeasurer,

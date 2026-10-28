@@ -42,7 +42,11 @@ object Names {
     val CONSTANTS = mapOf("pi" to kotlin.math.PI, "π" to kotlin.math.PI, "e" to kotlin.math.E)
 }
 
-/** Constructors that fold constants and drop identities, so derivatives stay readable. */
+/**
+ * Constructors that fold constants, drop identities, gather constant factors in front and combine
+ * like terms, so derivatives and Itô's formula stay readable: x*(3*x^2) becomes 3*x^3, and
+ * 3*x^3 + 3*x^3 becomes 6*x^3. They are local rewrites, not a full simplifier.
+ */
 object Exprs {
     val ZERO = Expr.Num(0.0)
     val ONE = Expr.Num(1.0)
@@ -50,54 +54,65 @@ object Exprs {
 
     private fun Expr.isReciprocal() = this is Expr.Binary && op == Expr.Op.DIV && left == ONE
 
-    fun num(v: Double) = Expr.Num(v)
+    /** A number, with −0 stored as 0 so that it equals [ZERO]. */
+    fun num(v: Double) = Expr.Num(if (v == 0.0) 0.0 else v)
 
-    fun neg(a: Expr): Expr = when (a) {
-        is Expr.Num -> Expr.Num(-a.value)
-        is Expr.Neg -> a.operand
+    fun neg(a: Expr): Expr = when {
+        a is Expr.Num -> num(-a.value)
+        a is Expr.Neg -> a.operand
+        a is Expr.Binary && a.op == Expr.Op.MUL && a.left is Expr.Num -> scaled(-(a.left as Expr.Num).value, a.right)
+        a is Expr.Binary && a.op == Expr.Op.SUB -> sub(a.right, a.left) // −(a − b) = b − a
+        a is Expr.Binary && a.op == Expr.Op.ADD -> sub(neg(a.left), a.right) // −(a + b) = −a − b
         else -> Expr.Neg(a)
     }
 
     fun add(a: Expr, b: Expr): Expr = when {
-        a is Expr.Num && b is Expr.Num -> Expr.Num(a.value + b.value)
+        a is Expr.Num && b is Expr.Num -> num(a.value + b.value)
         a == ZERO -> b
         b == ZERO -> a
         b is Expr.Neg -> sub(a, b.operand)
-        else -> Expr.Binary(Expr.Op.ADD, a, b)
+        b is Expr.Num && b.value < 0 -> sub(a, num(-b.value))
+        a is Expr.Neg -> sub(b, a.operand) // −a + b = b − a
+        else -> combineLikeTerms(a, b, 1.0) ?: Expr.Binary(Expr.Op.ADD, a, b)
     }
 
     fun sub(a: Expr, b: Expr): Expr = when {
-        a is Expr.Num && b is Expr.Num -> Expr.Num(a.value - b.value)
+        a is Expr.Num && b is Expr.Num -> num(a.value - b.value)
         b == ZERO -> a
         a == ZERO -> neg(b)
-        a == b -> ZERO
-        else -> Expr.Binary(Expr.Op.SUB, a, b)
+        b is Expr.Neg -> add(a, b.operand)
+        else -> combineLikeTerms(a, b, -1.0) ?: Expr.Binary(Expr.Op.SUB, a, b)
     }
 
-    fun mul(a: Expr, b: Expr): Expr = when {
-        a is Expr.Num && b is Expr.Num -> Expr.Num(a.value * b.value)
-        a == ZERO || b == ZERO -> ZERO
-        a == ONE -> b
-        b == ONE -> a
-        a == MINUS_ONE -> neg(b)
-        b == MINUS_ONE -> neg(a)
-        b.isReciprocal() -> div(a, (b as Expr.Binary).right) // a*(1/b) = a/b
-        a.isReciprocal() -> div(b, (a as Expr.Binary).right)
-        a is Expr.Neg -> neg(mul(a.operand, b))
-        b is Expr.Neg -> neg(mul(a, b.operand))
-        b is Expr.Num -> Expr.Binary(Expr.Op.MUL, b, a) // constants first: 2*x, not x*2
-        else -> Expr.Binary(Expr.Op.MUL, a, b)
+    fun mul(a: Expr, b: Expr): Expr {
+        when {
+            a is Expr.Num && b is Expr.Num -> return num(a.value * b.value)
+            a == ZERO || b == ZERO -> return ZERO
+            a == ONE -> return b
+            b == ONE -> return a
+            a == MINUS_ONE -> return neg(b)
+            b == MINUS_ONE -> return neg(a)
+            b.isReciprocal() -> return div(a, (b as Expr.Binary).right) // a*(1/b) = a/b
+            a.isReciprocal() -> return div(b, (a as Expr.Binary).right)
+            a is Expr.Neg -> return neg(mul(a.operand, b))
+            b is Expr.Neg -> return neg(mul(a, b.operand))
+        }
+        // Constants go in front, multiplied together: 2*(3*x) = 6*x and x*2 = 2*x.
+        val (ca, ra) = coefficient(a)
+        val (cb, rb) = coefficient(b)
+        return scaled(ca * cb, productOfFactors(ra, rb))
     }
 
     fun div(a: Expr, b: Expr): Expr = when {
-        a is Expr.Num && b is Expr.Num && b.value != 0.0 -> Expr.Num(a.value / b.value)
+        a is Expr.Num && b is Expr.Num && b.value != 0.0 -> num(a.value / b.value)
         a == ZERO -> ZERO
         b == ONE -> a
+        a == b -> ONE
         else -> Expr.Binary(Expr.Op.DIV, a, b)
     }
 
     fun pow(a: Expr, b: Expr): Expr = when {
-        a is Expr.Num && b is Expr.Num -> Expr.Num(a.value.pow(b.value))
+        a is Expr.Num && b is Expr.Num -> num(a.value.pow(b.value))
         b == ZERO -> ONE
         b == ONE -> a
         else -> Expr.Binary(Expr.Op.POW, a, b)
@@ -105,7 +120,44 @@ object Exprs {
 
     fun call(f: Function, vararg args: Expr): Expr {
         val call = Expr.Call(f, args.toList())
-        return if (args.all { it is Expr.Num }) Expr.Num(Evaluator.evaluate(call, 0.0, 0.0)) else call
+        return if (args.all { it is Expr.Num }) num(Evaluator.evaluate(call, 0.0, 0.0)) else call
+    }
+
+    /** c·r with c a number: 3*x is (3, x), -x is (−1, x), a number c is (c, 1), anything else (1, itself). */
+    private fun coefficient(e: Expr): Pair<Double, Expr> = when {
+        e is Expr.Num -> e.value to ONE
+        e is Expr.Neg -> coefficient(e.operand).let { (c, r) -> -c to r }
+        e is Expr.Binary && e.op == Expr.Op.MUL && e.left is Expr.Num -> (e.left as Expr.Num).value to e.right
+        else -> 1.0 to e
+    }
+
+    /** c·r, written as plainly as possible. */
+    private fun scaled(c: Double, r: Expr): Expr = when {
+        c == 0.0 -> ZERO
+        r == ONE -> num(c)
+        c == 1.0 -> r
+        c == -1.0 -> neg(r)
+        else -> Expr.Binary(Expr.Op.MUL, num(c), r)
+    }
+
+    /** The product of two factors without constants, merging powers of one base: x*x^2 = x^3. */
+    private fun productOfFactors(a: Expr, b: Expr): Expr {
+        if (a == ONE) return b
+        if (b == ONE) return a
+        val (baseA, powerA) = powerOf(a)
+        val (baseB, powerB) = powerOf(b)
+        return if (baseA == baseB) pow(baseA, num(powerA + powerB)) else Expr.Binary(Expr.Op.MUL, a, b)
+    }
+
+    /** x^n is (x, n) for a number n; anything else is (itself, 1). */
+    private fun powerOf(e: Expr): Pair<Expr, Double> =
+        if (e is Expr.Binary && e.op == Expr.Op.POW && e.right is Expr.Num) e.left to (e.right as Expr.Num).value else e to 1.0
+
+    /** a ± b as one term when they differ only by a constant factor: 3*x^3 + 3*x^3 = 6*x^3. */
+    private fun combineLikeTerms(a: Expr, b: Expr, sign: Double): Expr? {
+        val (ca, ra) = coefficient(a)
+        val (cb, rb) = coefficient(b)
+        return if (ra == rb && ra != ONE) scaled(ca + sign * cb, ra) else null
     }
 }
 
@@ -135,12 +187,14 @@ private fun collectNames(e: Expr, into: MutableSet<String>) {
 fun Expr.format(): String = when (this) {
     is Expr.Num -> formatNumber(value)
     is Expr.Var -> name
-    is Expr.Neg -> "-" + operand.wrap(4)
+    // −(a*b) = (−a)*b, so a product needs no parentheses after the minus sign.
+    is Expr.Neg -> "-" + operand.wrap(if (operand is Expr.Binary && operand.op != Expr.Op.POW) 2 else 4)
     is Expr.Call -> function.displayName + args.joinToString(", ", "(", ")") { it.format() }
     is Expr.Binary -> when (op) {
         Expr.Op.ADD -> left.wrap(1) + " + " + right.wrap(1)
         Expr.Op.SUB -> left.wrap(1) + " - " + right.wrap(2)
-        Expr.Op.MUL -> left.wrap(2) + "*" + right.wrap(4)
+        // Products are associative, so a*(b*c) prints as a*b*c.
+        Expr.Op.MUL -> left.wrap(2) + "*" + right.wrap(if (right is Expr.Binary && right.op == Expr.Op.MUL) 2 else 4)
         Expr.Op.DIV -> left.wrap(2) + "/" + right.wrap(4)
         Expr.Op.POW -> left.wrap(5) + "^" + right.wrap(4)
     }

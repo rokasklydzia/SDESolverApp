@@ -25,8 +25,11 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   Implicit multiplication (`2x`, `0.3 sigma x`), `^` or `**`, and the usual functions all work.
 - **Monte Carlo:** parallel over all cores with coroutines, per-time mean and variance, terminal
   quantiles, histograms, confidence intervals and antithetic variates.
-- **Analytics and Itô sums:** Φ(x), Black–Scholes prices, and running Itô and Stratonovich sums
-  and quadratic variation along a Brownian path.
+- **Analytics and Itô sums:** Φ(x), Black–Scholes prices, and running left point (Itô), midpoint
+  (Stratonovich) and right point (backward) sums, p-variation, Σ Y(ΔX)ⁿ and covariation along a path.
+- **Itô's formula:** `sde.ito.ItoFormula` derives the dt and dB terms of f(t, X) symbolically, and
+  `sde.ito.MartingaleCheck` decides whether f(t, X) + ∫g ds is a martingale, finds the g that makes
+  it one, and estimates E[M(t)] over many paths.
 
 ## The app
 
@@ -34,6 +37,10 @@ Brownian motion, random walks and other stochastic processes. An iPhone version 
   mean, 25–75% and 5–95% bands and, beside the chart, the histogram of X(t) against the exact
   density where one exists. Pinch to zoom, drag to pan, double tap to reset. Play, pause, scrub,
   change the speed, or loop with fresh paths. Schemes can be switched for scalar models.
+- **Labs:** the Itô calculus from the course, hands on. *Integrals* compares the left, mid and
+  right point sums on one path as the mesh shrinks; *Variation* shows Σ|ΔX|ᵖ blowing up, settling
+  on ⟨X⟩ or vanishing for p = 1, 2, 3; *Martingales* applies Itô's formula to a typed f(t, x) and
+  checks E[M(t)] over 10,000 paths, with the course exercises as examples.
 - **Demos:** a scrolling white noise oscilloscope with its integral, and random walks turning into
   Brownian motion as the number of steps grows.
 - **Engine:** the speed test and the list of models.
@@ -66,3 +73,6 @@ to the run as an artifact you can install on a phone.
 - European call prices against Black–Scholes, with and without antithetic variates.
 - ∫W dW: the Itô sum against ½W² − ½t, the Stratonovich sum against ½W², and Σ(ΔW)² → t.
 - The formula parser, printer and symbolic derivatives (checked against finite differences).
+- The labs against course exercises: tB − ∫B ds and e^{t/2}cos B are martingales, X³ with
+  dX = X dt + X dB needs g = −6x³, Σ(ΔX)² → ∫4X² dt and Σ X(ΔX)³ → 0 for X = e^{2B−3t},
+  ⟨B⁴, B²⟩ = ∫8B⁴ dt, and ⟨B, Y⟩ = t for dY = cos²Y dt + dB.

@@ -14,7 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 
-private val tabs = listOf("Simulate", "Demos", "Engine")
+private val tabs = listOf("Simulate", "Labs", "Demos", "Engine")
 
 @Composable
 fun AppRoot() {
@@ -28,7 +28,8 @@ fun AppRoot() {
             }
             when (selected) {
                 0 -> SimulateScreen()
-                1 -> DemosScreen()
+                1 -> LabsScreen()
+                2 -> DemosScreen()
                 else -> EngineScreen()
             }
         }
