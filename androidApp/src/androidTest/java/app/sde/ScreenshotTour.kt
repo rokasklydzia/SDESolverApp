@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Configurator
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Test
@@ -85,14 +86,14 @@ class ScreenshotTour {
         check(device.wait(Until.gone(By.textStartsWith("Simulating")), 240_000)) { "Still simulating" }
     }
 
-    /** Taps a chip that may be off screen, swiping its row (the one holding [anchor]) left until it shows. */
+    /** Taps a chip that may be off screen, scrolling its row (the one holding [anchor]) until it shows. */
     private fun tapInRow(text: String, anchor: String) {
-        val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
-        val width = device.displayWidth
+        // Both the screen and the chip row scroll; the row is the shorter one.
+        val row = device.findObjects(By.scrollable(true).hasDescendant(By.text(anchor)))
+            .minByOrNull { it.visibleBounds.height() } ?: error("No row holds \"$anchor\"")
         repeat(4) {
-            device.findObject(By.text(text))?.let { it.click(); return }
-            device.swipe((width * 0.8).toInt(), y, (width * 0.2).toInt(), y, 40)
-            Thread.sleep(1_000)
+            device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
+            row.scroll(Direction.RIGHT, 0.8f)
         }
         error("\"$text\" is not on screen")
     }
