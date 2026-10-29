@@ -58,8 +58,7 @@ class ScreenshotTour {
             settle()
             Thread.sleep(2_000)
             shot("04-martingales")
-            scrollChipsLeft(anchor = "Martingales")
-            tap("Monte Carlo")
+            tapInRow("Monte Carlo", anchor = "Martingales")
             tap("Loop")
             settle()
             Thread.sleep(2_000)
@@ -85,12 +84,16 @@ class ScreenshotTour {
         check(device.wait(Until.gone(By.textStartsWith("Simulating")), 240_000)) { "Still simulating" }
     }
 
-    /** Swipes the row of chips that holds [anchor] to the left, to bring its last chips on screen. */
-    private fun scrollChipsLeft(anchor: String) {
-        val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: return
+    /** Taps a chip that may be off screen, swiping its row (the one holding [anchor]) left until it shows. */
+    private fun tapInRow(text: String, anchor: String) {
+        val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
         val width = device.displayWidth
-        device.swipe((width * 0.85).toInt(), y, (width * 0.15).toInt(), y, 20)
-        Thread.sleep(500)
+        repeat(4) {
+            device.findObject(By.text(text))?.let { it.click(); return }
+            device.swipe((width * 0.8).toInt(), y, (width * 0.2).toInt(), y, 40)
+            Thread.sleep(1_000)
+        }
+        error("\"$text\" is not on screen")
     }
 
     private fun shot(name: String) {
