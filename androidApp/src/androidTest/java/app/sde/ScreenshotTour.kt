@@ -74,7 +74,8 @@ class ScreenshotTour {
     }
 
     private fun tap(text: String) {
-        val target = device.wait(Until.findObject(By.text(text)), 10_000) ?: error("\"$text\" is not on screen")
+        // Generous: drawing a thousand paths in software rendering keeps the emulator busy.
+        val target = device.wait(Until.findObject(By.text(text)), 30_000) ?: error("\"$text\" is not on screen")
         target.click()
     }
 
