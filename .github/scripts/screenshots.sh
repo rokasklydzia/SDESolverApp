@@ -22,7 +22,11 @@ demo notifications -e visible false
 
 result=$(adb shell am instrument -w -e class app.sde.ScreenshotTour "$package.test/androidx.test.runner.AndroidJUnitRunner")
 echo "$result"
-grep -q "^OK (1 test)" <<< "$result"
+if ! grep -q "^OK (1 test)" <<< "$result"; then
+  # What UI Automator saw when it gave up, if the tour saved it.
+  adb shell cat "/sdcard/Android/data/$package/files/screenshots/hierarchy.xml" | tr '>' '\n' | grep -E 'scrollable="true"|text="[^"]+"' || true
+  exit 1
+fi
 
 mkdir -p "$raw"
 adb pull "/sdcard/Android/data/$package/files/screenshots/." "$raw"

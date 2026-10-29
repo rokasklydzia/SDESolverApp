@@ -95,6 +95,7 @@ class ScreenshotTour {
             device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
             row.scroll(Direction.RIGHT, 0.8f)
         }
+        device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
         error("\"$text\" is not on screen")
     }
 
