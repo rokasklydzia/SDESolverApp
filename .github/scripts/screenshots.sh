@@ -20,13 +20,6 @@ demo battery -e level 100 -e plugged false
 demo network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4
 demo notifications -e visible false
 
-# Software rendering of the live charts at full resolution can starve UI Automator, so draw at
-# 720p with the same density-independent size as the Pixel 6 (411 dp wide). The README scales
-# the screenshots down to 540 px anyway.
-adb shell wm size 720x1600
-adb shell wm density 280
-sleep 3
-
 # The emulator's speed varies between runners, so give the tour up to three attempts.
 for attempt in 1 2 3; do
   adb shell am force-stop "$package"
