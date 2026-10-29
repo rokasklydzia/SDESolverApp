@@ -66,7 +66,7 @@ class ScreenshotTour {
             shot("05-monte-carlo")
 
             tap("Solver")
-            Thread.sleep(9_000)
+            Thread.sleep(7_000)
             shot("06-solver")
             tap("Demos")
             Thread.sleep(7_000)
