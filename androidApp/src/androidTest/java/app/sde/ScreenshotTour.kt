@@ -1,12 +1,12 @@
 package app.sde
 
 import android.os.ParcelFileDescriptor
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Configurator
-import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Test
@@ -76,7 +76,11 @@ class ScreenshotTour {
 
     private fun tap(text: String) {
         // Generous: drawing a thousand paths in software rendering keeps the emulator busy.
-        val target = device.wait(Until.findObject(By.text(text)), 30_000) ?: error("\"$text\" is not on screen")
+        val target = device.wait(Until.findObject(By.text(text)), 30_000)
+        if (target == null) {
+            device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
+            error("\"$text\" is not on screen")
+        }
         target.click()
     }
 
@@ -86,17 +90,28 @@ class ScreenshotTour {
         check(device.wait(Until.gone(By.textStartsWith("Simulating")), 240_000)) { "Still simulating" }
     }
 
-    /** Taps a chip that may be off screen, scrolling its row (the one holding [anchor]) until it shows. */
+    /**
+     * Taps a chip that may be off screen, scrolling its row (the one holding [anchor]) until it
+     * shows. Off-screen chips are not in the accessibility tree, and swipes over the chips don't
+     * reliably scroll on the emulator, so this asks the row itself to scroll.
+     */
     private fun tapInRow(text: String, anchor: String) {
-        // Both the screen and the chip row scroll; the row is the shorter one.
-        val row = device.findObjects(By.scrollable(true).hasDescendant(By.text(anchor)))
-            .minByOrNull { it.visibleBounds.height() } ?: error("No row holds \"$anchor\"")
-        repeat(4) {
+        repeat(5) {
             device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
-            row.scroll(Direction.RIGHT, 0.8f)
+            val row = scrollableParentOf(anchor, instrumentation.uiAutomation.rootInActiveWindow)
+                ?: error("No row holds \"$anchor\"")
+            row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            Thread.sleep(1_000)
         }
         device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
         error("\"$text\" is not on screen")
+    }
+
+    private fun scrollableParentOf(text: String, node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        val children = (0 until node.childCount).mapNotNull { node.getChild(it) }
+        if (node.isScrollable && children.any { it.text?.toString() == text }) return node
+        return children.firstNotNullOfOrNull { scrollableParentOf(text, it) }
     }
 
     private fun shot(name: String) {

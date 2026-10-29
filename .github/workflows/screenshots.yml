@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# A newer push replaces a running tour, so two runs never push screenshots at once.
+concurrency:
+  group: screenshots-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   screenshots:
     runs-on: ubuntu-latest
