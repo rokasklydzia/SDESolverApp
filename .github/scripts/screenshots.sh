@@ -20,13 +20,24 @@ demo battery -e level 100 -e plugged false
 demo network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4
 demo notifications -e visible false
 
-result=$(adb shell am instrument -w -e class app.sde.ScreenshotTour "$package.test/androidx.test.runner.AndroidJUnitRunner")
-echo "$result"
-if ! grep -q "^OK (1 test)" <<< "$result"; then
+# Software rendering of the live charts at full resolution can starve UI Automator, so draw at
+# 720p with the same density-independent size as the Pixel 6 (411 dp wide). The README scales
+# the screenshots down to 540 px anyway.
+adb shell wm size 720x1600
+adb shell wm density 280
+sleep 3
+
+# The emulator's speed varies between runners, so give the tour up to three attempts.
+for attempt in 1 2 3; do
+  adb shell am force-stop "$package"
+  result=$(adb shell am instrument -w -e class app.sde.ScreenshotTour "$package.test/androidx.test.runner.AndroidJUnitRunner")
+  echo "Attempt $attempt:"
+  echo "$result"
+  if grep -q "^OK (1 test)" <<< "$result"; then break; fi
   # What UI Automator saw when it gave up, if the tour saved it.
-  adb shell cat "/sdcard/Android/data/$package/files/screenshots/hierarchy.xml" | tr '>' '\n' | grep -E 'scrollable="true"|text="[^"]+"' || true
-  exit 1
-fi
+  adb shell cat "/sdcard/Android/data/$package/files/screenshots/hierarchy.xml" 2> /dev/null | tr '>' '\n' | grep -E 'scrollable="true"|text="[^"]+"' || true
+  if [ "$attempt" = 3 ]; then exit 1; fi
+done
 
 mkdir -p "$raw"
 adb pull "/sdcard/Android/data/$package/files/screenshots/." "$raw"
