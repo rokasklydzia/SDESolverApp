@@ -27,9 +27,9 @@ class ScreenshotTour {
     fun tour() {
         out.deleteRecursively()
         out.mkdirs()
-        // The charts animate without pause, so the screen is never idle: don't wait for it before
-        // every tap, or the taps land seconds late.
-        Configurator.getInstance().waitForIdleTimeout = 0
+        // The charts animate without pause, so the screen is never idle: wait for it only briefly
+        // before each query, or the taps land seconds late. Not at all leaves the view stale.
+        Configurator.getInstance().waitForIdleTimeout = 1_000
         ActivityScenario.launch(MainActivity::class.java).use {
             device.wait(Until.hasObject(By.text("Simulate")), 20_000)
 
@@ -38,7 +38,7 @@ class ScreenshotTour {
             // Tapping the selected model again restarts its 8 second run on the paths already
             // simulated, so the recording starts with empty axes and ends with the paths drawn.
             val recording = instrumentation.uiAutomation.executeShellCommand(
-                "screenrecord --time-limit 9 --size 720x1600 --bit-rate 8000000 $RECORDING",
+                "screenrecord --time-limit 11 --size 720x1600 --bit-rate 8000000 $RECORDING",
             )
             Thread.sleep(500)
             tap("Geometric Brownian motion")
