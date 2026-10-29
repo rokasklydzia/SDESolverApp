@@ -1,7 +1,7 @@
 name: Screenshots
 
-# Runs the app on an emulator and saves the README's screenshots and animation as an artifact.
-# Start it from the Actions tab after a UI change, then copy the files into docs/screenshots.
+# Runs the app on an emulator and commits the README's screenshots and animation to
+# docs/screenshots on the branch it ran on. Start it from the Actions tab after a UI change.
 on:
   workflow_dispatch:
   pull_request:
@@ -10,12 +10,17 @@ on:
       - .github/workflows/screenshots.yml
       - .github/scripts/screenshots.sh
 
+permissions:
+  contents: write
+
 jobs:
   screenshots:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,14 +48,24 @@ jobs:
 
       - name: Scale the screenshots and make the GIF
         run: |
-          mkdir -p build/screenshots/readme
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          mkdir -p docs/screenshots
           for f in build/screenshots/raw/*.png; do
-            ffmpeg -loglevel error -y -i "$f" -vf scale=540:-1:flags=lanczos "build/screenshots/readme/$(basename "$f")"
+            ffmpeg -loglevel error -y -i "$f" -vf scale=540:-1:flags=lanczos "docs/screenshots/$(basename "$f")"
           done
           ffmpeg -loglevel error -y -i build/screenshots/raw/simulate.mp4 \
             -vf "fps=15,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
-            build/screenshots/readme/simulate.gif
-          ls -l build/screenshots/readme
+            docs/screenshots/simulate.gif
+          ls -l docs/screenshots
+
+      - name: Commit the screenshots
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the README screenshots"
+          git push
 
       - name: Upload
         if: always()
