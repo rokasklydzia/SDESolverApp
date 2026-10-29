@@ -5,18 +5,20 @@ set -euo pipefail
 package=com.sciencio.sdesolver
 raw=build/screenshots/raw
 
+adb install -r androidApp/build/outputs/apk/debug/*.apk
+adb install -r androidApp/build/outputs/apk/androidTest/debug/*.apk
+
 # Dark theme, and a clean status bar (fixed clock, full battery, no notifications).
 adb shell cmd uimode night yes
+sleep 5
 adb shell settings put global sysui_demo_allowed 1
+adb shell settings put global sysui_tuner_demo_on 1
 demo() { adb shell am broadcast -a com.android.systemui.demo -e command "$@" > /dev/null; }
 demo enter
 demo clock -e hhmm 1200
 demo battery -e level 100 -e plugged false
 demo network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4
 demo notifications -e visible false
-
-adb install -r androidApp/build/outputs/apk/debug/*.apk
-adb install -r androidApp/build/outputs/apk/androidTest/debug/*.apk
 
 result=$(adb shell am instrument -w -e class app.sde.ScreenshotTour "$package.test/androidx.test.runner.AndroidJUnitRunner")
 echo "$result"

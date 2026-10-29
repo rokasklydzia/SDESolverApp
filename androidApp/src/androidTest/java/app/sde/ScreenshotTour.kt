@@ -28,14 +28,15 @@ class ScreenshotTour {
         ActivityScenario.launch(MainActivity::class.java).use {
             device.wait(Until.hasObject(By.text("Simulate")), 20_000)
 
-            // Leaving and re-entering Simulate restarts its 8 second run, so the recording starts
-            // with empty axes and ends with the paths drawn.
+            settle()
+
+            // Tapping the selected model again restarts its 8 second run on the paths already
+            // simulated, so the recording starts with empty axes and ends with the paths drawn.
             val recording = instrumentation.uiAutomation.executeShellCommand(
                 "screenrecord --time-limit 9 --size 720x1600 --bit-rate 8000000 $RECORDING",
             )
             Thread.sleep(500)
-            tap("Labs")
-            tap("Simulate")
+            tap("Geometric Brownian motion")
             Thread.sleep(7_000)
             shot("01-simulate")
             ParcelFileDescriptor.AutoCloseInputStream(recording).use { it.readBytes() }
@@ -47,11 +48,13 @@ class ScreenshotTour {
             Thread.sleep(7_000)
             shot("03-variation")
             tap("Martingales")
-            Thread.sleep(9_000)
+            settle()
+            Thread.sleep(7_000)
             shot("04-martingales")
             scrollChipsLeft(anchor = "Martingales")
             tap("Monte Carlo")
-            Thread.sleep(9_000)
+            settle()
+            Thread.sleep(7_000)
             shot("05-monte-carlo")
 
             tap("Solver")
@@ -66,6 +69,11 @@ class ScreenshotTour {
     private fun tap(text: String) {
         val target = device.wait(Until.findObject(By.text(text)), 10_000) ?: error("\"$text\" is not on screen")
         target.click()
+    }
+
+    /** Waits while a screen shows "Simulating…" instead of its chart; the emulator is slow. */
+    private fun settle() {
+        device.wait(Until.gone(By.textStartsWith("Simulating")), 180_000)
     }
 
     /** Swipes the row of chips that holds [anchor] to the left, to bring its last chips on screen. */
