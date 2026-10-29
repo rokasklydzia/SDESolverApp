@@ -5,6 +5,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Test
@@ -25,6 +26,9 @@ class ScreenshotTour {
     fun tour() {
         out.deleteRecursively()
         out.mkdirs()
+        // The charts animate without pause, so the screen is never idle: don't wait for it before
+        // every tap, or the taps land seconds late.
+        Configurator.getInstance().waitForIdleTimeout = 0
         ActivityScenario.launch(MainActivity::class.java).use {
             device.wait(Until.hasObject(By.text("Simulate")), 20_000)
 
@@ -47,14 +51,18 @@ class ScreenshotTour {
             tap("Variation")
             Thread.sleep(7_000)
             shot("03-variation")
+            // These two simulate many paths, which takes longer than an 8 second run on the
+            // emulator; looping would start a fresh batch every run, so stop it first.
             tap("Martingales")
+            tap("Loop")
             settle()
-            Thread.sleep(7_000)
+            Thread.sleep(2_000)
             shot("04-martingales")
             scrollChipsLeft(anchor = "Martingales")
             tap("Monte Carlo")
+            tap("Loop")
             settle()
-            Thread.sleep(7_000)
+            Thread.sleep(2_000)
             shot("05-monte-carlo")
 
             tap("Solver")
@@ -73,7 +81,8 @@ class ScreenshotTour {
 
     /** Waits while a screen shows "Simulating…" instead of its chart; the emulator is slow. */
     private fun settle() {
-        device.wait(Until.gone(By.textStartsWith("Simulating")), 180_000)
+        Thread.sleep(1_000)
+        check(device.wait(Until.gone(By.textStartsWith("Simulating")), 240_000)) { "Still simulating" }
     }
 
     /** Swipes the row of chips that holds [anchor] to the left, to bring its last chips on screen. */

@@ -53,7 +53,7 @@ jobs:
           for f in build/screenshots/raw/*.png; do
             ffmpeg -loglevel error -y -i "$f" -vf scale=540:-1:flags=lanczos "docs/screenshots/$(basename "$f")"
           done
-          ffmpeg -loglevel error -y -i build/screenshots/raw/simulate.mp4 \
+          ffmpeg -loglevel error -y -ss 0.5 -t 8 -i build/screenshots/raw/simulate.mp4 \
             -vf "fps=15,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
             docs/screenshots/simulate.gif
           ls -l docs/screenshots

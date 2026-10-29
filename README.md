@@ -1,7 +1,42 @@
-# SDE Solver
+<h1 align="center">SDE Solver</h1>
 
-An Android app for simulating stochastic differential equations, with live animated charts of
-Brownian motion, random walks and other stochastic processes. An iPhone version will follow.
+<p align="center">
+  <b>Stochastic calculus you can watch.</b><br>
+  Live simulations of SDEs, hands-on Itô calculus labs and a symbolic solver for stochastic
+  integrals, in an Android app. An iPhone version will follow.
+</p>
+
+<p align="center">
+  <a href="https://github.com/rokasklydzia/SDESolverApp/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rokasklydzia/SDESolverApp/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Kotlin 2.3" src="https://img.shields.io/badge/Kotlin-2.3-7F52FF?logo=kotlin&logoColor=white">
+  <img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white">
+  <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/simulate.gif" width="300" alt="A thousand geometric Brownian motion paths drawing themselves, with the histogram of S(t) against the lognormal density">
+</p>
+
+## A look around
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/01-simulate.png" width="200" alt="Simulate"><br><sub><b>Simulate</b><br>GBM paths, bands and the density of S(t)</sub></td>
+    <td align="center"><img src="docs/screenshots/02-integrals.png" width="200" alt="Integrals lab"><br><sub><b>Integrals</b><br>Itô, Stratonovich and backward sums</sub></td>
+    <td align="center"><img src="docs/screenshots/03-variation.png" width="200" alt="Variation lab"><br><sub><b>Variation</b><br>Σ(ΔX)² settling on ⟨X⟩</sub></td>
+    <td align="center"><img src="docs/screenshots/04-martingales.png" width="200" alt="Martingale checker"><br><sub><b>Martingales</b><br>Itô's formula and E[M(t)] over 10,000 paths</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/05-monte-carlo.png" width="200" alt="Monte Carlo lab"><br><sub><b>Monte Carlo</b><br>Plain and antithetic estimates converging</sub></td>
+    <td align="center"><img src="docs/screenshots/06-solver.png" width="200" alt="Stochastic integral solver"><br><sub><b>Solver</b><br>∫B³ dB = B⁴/4 − ∫1.5B² ds, checked on a path</sub></td>
+    <td align="center"><img src="docs/screenshots/07-demos.png" width="200" alt="Demos"><br><sub><b>Demos</b><br>White noise, and random walks becoming BM</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+The screenshots come from a real emulator run: the **Screenshots** workflow plays a scripted
+tour through the app (`androidApp/src/androidTest`) and commits the images to `docs/screenshots`.
+Run it from the Actions tab after a UI change to refresh them.
 
 ## Layout
 
