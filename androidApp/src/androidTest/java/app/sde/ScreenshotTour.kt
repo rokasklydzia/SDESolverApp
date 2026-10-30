@@ -60,7 +60,7 @@ class ScreenshotTour {
             settle()
             Thread.sleep(2_000)
             shot("04-martingales")
-            tapInRow("Monte Carlo", anchor = "Martingales")
+            tapLastInRow(anchor = "Martingales", arrived = "E[g(X(T))]")
             tap("Loop")
             settle()
             Thread.sleep(2_000)
@@ -98,37 +98,30 @@ class ScreenshotTour {
     }
 
     /**
-     * Taps a chip that may be off screen, scrolling its row (the one holding [anchor]) until it
-     * shows. Off-screen chips are not in the accessibility tree, and UI Automator's swipes don't
-     * reliably scroll the row on the emulator, so this tries the row's own scroll actions and a
-     * slow drag in turn, and reports what each did if the chip never shows.
+     * Taps the last chip of the row that holds [anchor], which starts off screen. The row's own
+     * scroll action moves it reliably, but the accessibility tree that UI Automator reads lags
+     * behind the busy emulator's screen, so the chip is tapped by position at the row's end, and
+     * [arrived] confirms the tap.
      */
-    private fun tapInRow(text: String, anchor: String) {
-        val tried = StringBuilder()
-        repeat(5) { attempt ->
-            device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
-            val roots = listOf(instrumentation.uiAutomation.rootInActiveWindow) +
-                instrumentation.uiAutomation.windows.map { it.root }
-            // Both the screen and the chip row scroll; the row is the shorter one.
-            val row = roots.flatMap { scrollablesHolding(anchor, it) }
-                .minByOrNull { node -> Rect().also(node::getBoundsInScreen).height() }
-            val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
-            val scrolled = when (attempt % 3) {
-                0 -> row?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                1 -> row?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id)
-                // A slow, finger-like drag through the input system.
-                else -> {
-                    val w = device.displayWidth
-                    val swipe = instrumentation.uiAutomation.executeShellCommand("input swipe ${w * 4 / 5} $y ${w / 5} $y 800")
-                    ParcelFileDescriptor.AutoCloseInputStream(swipe).use { it.readBytes() }
-                    null
-                }
-            }
-            tried.append(" [${row?.className} ${row?.actionList?.map { it.id }} -> $scrolled]")
-            Thread.sleep(1_000)
+    private fun tapLastInRow(anchor: String, arrived: String) {
+        val roots = listOf(instrumentation.uiAutomation.rootInActiveWindow) +
+            instrumentation.uiAutomation.windows.map { it.root }
+        // Both the screen and the chip row scroll; the row is the shorter one.
+        val row = roots.flatMap { scrollablesHolding(anchor, it) }
+            .minByOrNull { node -> Rect().also(node::getBoundsInScreen).height() }
+            ?: error("No row holds \"$anchor\"")
+        val bounds = Rect().also(row::getBoundsInScreen)
+        repeat(5) {
+            if (!row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return@repeat
+            Thread.sleep(500)
         }
-        device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
-        error("\"$text\" is not on screen;$tried")
+        Thread.sleep(1_000)
+        val halfChip = (48 * instrumentation.targetContext.resources.displayMetrics.density).toInt()
+        device.click(bounds.right - halfChip, bounds.centerY())
+        if (!device.wait(Until.hasObject(By.textContains(arrived)), 30_000)) {
+            device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
+            error("Tapping the end of the row did not open \"$arrived\"")
+        }
     }
 
     /** The scrollable nodes under [node] whose subtree shows [text]. */
