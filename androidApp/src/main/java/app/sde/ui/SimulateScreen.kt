@@ -35,7 +35,9 @@ import sde.catalog.Parameter
 import sde.catalog.PresetModel
 import sde.chart.Ticks
 import sde.chart.Viewport
+import sde.expr.differentialTex
 import sde.expr.format
+import sde.expr.withState
 import sde.live.Ensemble
 import sde.model.CustomSde
 import sde.model.EulerMaruyama
@@ -94,14 +96,21 @@ fun SimulateScreen() {
     var autoFit by remember(model, component, custom) { mutableStateOf(true) }
     val playback = rememberPlayback(STEPS)
 
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(process, grid, seed, component) {
-        val fresh = Ensemble.simulate(process, grid, ENSEMBLE_PATHS, seed, component)
-        ensemble = fresh
-        if (autoFit || viewport.tMax > grid.horizon) {
-            viewport = Viewport.fit(0.0..grid.horizon, fresh.bandRange())
+        simulating = true
+        try {
+            val fresh = Ensemble.simulate(process, grid, ENSEMBLE_PATHS, seed, component)
+            ensemble = fresh
+            if (autoFit || viewport.tMax > grid.horizon) {
+                viewport = Viewport.fit(0.0..grid.horizon, fresh.bandRange())
+            }
+        } finally {
+            simulating = false
         }
     }
-    PlaybackClock(playback, onRunFinished = { seed++ })
+    // A slow phone may still be simulating when a run ends; then it replays the paths it has.
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     Column(
         Modifier
@@ -116,6 +125,12 @@ fun SimulateScreen() {
             FilterChip(selected = custom, onClick = { custom = true; scheme = EulerMaruyama; playback.restart() }, label = { Text("Your own SDE") })
         }
         Spacer(Modifier.height(6.dp))
+        val typed = (lastCustom as? ScalarProcess)?.sde as? CustomSde
+        if (!custom) {
+            MathFormula(model.equation)
+        } else if (typed != null) {
+            MathFormula(differentialTex("dX_t", typed.driftExpr.withState("X_t"), typed.diffusionExpr.withState("X_t"), separator = separator))
+        }
         Text(
             if (custom) "dX = μ(t, X) dt + σ(t, X) dB with your own formulas. Every other name in them becomes a parameter with a slider." else model.summary,
             style = MaterialTheme.typography.bodySmall,

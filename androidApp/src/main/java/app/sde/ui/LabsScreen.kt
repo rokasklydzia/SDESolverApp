@@ -36,7 +36,9 @@ import sde.expr.Derivative
 import sde.expr.Evaluator
 import sde.expr.Exprs
 import sde.expr.Parser
+import sde.expr.differentialTex
 import sde.expr.format
+import sde.expr.withState
 import sde.ito.CovariationSetup
 import sde.ito.EvaluationPoint
 import sde.ito.ItoFormula
@@ -154,6 +156,7 @@ private fun IntegralsLab() {
     PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Itô, Stratonovich and backward integrals", style = MaterialTheme.typography.titleMedium)
+    MathFormula("\\sum_i h\\left(X_{t_i}\\right)\\,\\Delta X_i \\;\\to\\; \\int_0^t h(X_s)\\,dX_s")
     Note(
         "One path of X, and the sum Σ h(X)·ΔX with h taken at the left point, the average of both ends, or the right " +
             "point of each step. For ordinary integrals the choice would not matter. Here the sums settle on three " +
@@ -286,6 +289,7 @@ private fun VariationLab() {
     PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("p-variation", style = MaterialTheme.typography.titleMedium)
+    MathFormula("\\sum_i \\left(\\Delta X_i\\right)^2 \\;\\to\\; \\langle X\\rangle_t = \\int_0^t f_x(s, B_s)^2\\,ds")
     Note(
         "The same path of X = f(t, B) on meshes of 16 to 4096 steps, fainter for coarser meshes. As the mesh shrinks " +
             "Σ|ΔX| blows up, Σ(ΔX)² settles on ⟨X⟩ = ∫f_x² ds (dashed), and the third powers vanish. " +
@@ -371,9 +375,9 @@ private fun MartingaleLab() {
     var x0Text by remember { mutableStateOf("0") }
     var seed by remember { mutableLongStateOf(1L) }
     val playback = rememberPlayback(PLAYBACK_STEPS)
-    PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Martingale checker", style = MaterialTheme.typography.titleMedium)
+    MathFormula("M_t = f(t, X_t) + \\int_0^t g(s, X_s)\\,ds")
     Note(
         "Is M(t) = f(t, X(t)) + ∫₀ᵗ g(s, X(s)) ds a martingale? Itô's formula gives its dt term symbolically, and " +
             "$MARTINGALE_PATHS simulated paths show whether E[M(t)] really stays at M(0). One path proves nothing.",
@@ -383,16 +387,25 @@ private fun MartingaleLab() {
     val setup = remember(drift, diffusion, f, compensator, x0Text) {
         runCatching { MartingaleCheck(drift, diffusion, f, compensator) to parseNumber(x0Text) }
     }
-    var simulation by remember { mutableStateOf<MartingaleRun?>(null) }
+    // A new seed keeps the last run on screen until the next one is ready; new formulas clear it.
+    var simulation by remember(setup) { mutableStateOf<MartingaleRun?>(null) }
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(setup, seed) {
-        simulation = null
         val (check, x0) = setup.getOrNull() ?: return@LaunchedEffect
-        simulation = check.simulate(x0, TimeGrid(HORIZON, MARTINGALE_STEPS), MARTINGALE_PATHS, seed)
+        simulating = true
+        try {
+            simulation = check.simulate(x0, TimeGrid(HORIZON, MARTINGALE_STEPS), MARTINGALE_PATHS, seed)
+            playback.restart()
+        } finally {
+            simulating = false
+        }
     }
+    // Fresh paths for each looped run, unless the last batch is still being simulated.
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     setup.onFailure { ErrorText(it.message ?: "Cannot read these formulas") }
     setup.onSuccess { (check, _) ->
-        Formula("dM = (${check.driftOfM.format()}) dt + (${check.differential.dB.format()}) dB")
+        MathFormula(differentialTex("dM_t", check.driftOfM.withState("X_t"), check.differential.dB.withState("X_t"), separator = separator))
         val current = simulation
         val vanishes = check.driftOfM == Exprs.ZERO ||
             (current != null && check.driftVanishes(HORIZON, current.xRange))
@@ -531,6 +544,7 @@ private fun CovariationLab() {
     PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Covariation", style = MaterialTheme.typography.titleMedium)
+    MathFormula("\\sum_i \\Delta U_i\\,\\Delta V_i \\;\\to\\; \\langle U, V\\rangle_t = \\int_0^t \\sigma_U \\sigma_V\\,ds")
     Note(
         "U = f(t, X) and V = g(t, Y), where X and Y are driven by the same Brownian path. On one path Σ ΔU·ΔV " +
             "converges to ∫σ_U σ_V ds (dashed), with σ_U and σ_V the dB terms of Itô's formula. Averaged over " +
@@ -553,9 +567,8 @@ private fun CovariationLab() {
 
     setup.onFailure { ErrorText(it.message ?: "Cannot read these formulas") }
     setup.onSuccess { s ->
-        Formula("σ_U = ${s.uNoise.format()}   (x = X)")
-        Formula("σ_V = ${s.vNoise.format()}   (x = Y)")
-        Note("d⟨U, V⟩ = σ_U·σ_V dt")
+        MathFormula("\\sigma_U = " + s.uNoise.withState("X_t").tex())
+        MathFormula("\\sigma_V = " + s.vNoise.withState("Y_t").tex())
 
         val path = remember(s, seed) {
             val fine = TimeGrid(HORIZON, FINE_STEPS)
@@ -700,9 +713,9 @@ private fun MonteCarloLab() {
     var payoffText by remember { mutableStateOf("max(x - 100, 0)") }
     var seed by remember { mutableLongStateOf(1L) }
     val playback = rememberPlayback(PLAYBACK_STEPS)
-    PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Monte Carlo", style = MaterialTheme.typography.titleMedium)
+    MathFormula("m_N = \\frac{1}{N}\\sum_{k=1}^{N} g\\left(X_T^{(k)}\\right) \\;\\to\\; \\mathrm{E}\\left[g(X_T)\\right],\\quad m_N \\pm 1${separator}96\\,\\frac{s_N}{\\sqrt{N}}")
     Note(
         "E[g(X(T))] at T = 1 estimated from more and more paths, with a 95% confidence band. The error falls like " +
             "1/√N, so four times the paths only halve it. Antithetic variates pair every path with its mirror image " +
@@ -711,12 +724,20 @@ private fun MonteCarloLab() {
     Spacer(Modifier.height(8.dp))
 
     val payoff = remember(payoffText) { runCatching { Evaluator.compile(Parser.parse(payoffText)) } }
-    var result by remember { mutableStateOf<MonteCarloLabResult?>(null) }
+    // As in the martingale lab: a new seed keeps the last estimate on screen, a new question clears it.
+    var result by remember(model, payoff) { mutableStateOf<MonteCarloLabResult?>(null) }
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(model, payoff, seed) {
-        result = null
         val g = payoff.getOrNull() ?: return@LaunchedEffect
-        result = runMonteCarloLab(model, g, seed)
+        simulating = true
+        try {
+            result = runMonteCarloLab(model, g, seed)
+            playback.restart()
+        } finally {
+            simulating = false
+        }
     }
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     payoff.onFailure { ErrorText(it.message ?: "Cannot read this formula") }
     val current = result

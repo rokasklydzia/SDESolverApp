@@ -47,6 +47,7 @@ fun DemosScreen() {
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text("White noise and its integral", style = MaterialTheme.typography.titleMedium)
+        MathFormula("B_t = \\int_0^t \\xi_s\\,ds,\\quad \\xi_{t_i} \\approx \\frac{\\Delta B_i}{\\Delta t} \\sim N\\left(0, \\frac{1}{\\Delta t}\\right)")
         Text(
             "White noise ξ = ΔW/Δt has spikes of size 1/√Δt, so it has no limit as Δt → 0. " +
                 "Its running sum W = ΣΔW does: that limit is Brownian motion.",
@@ -58,6 +59,7 @@ fun DemosScreen() {
 
         Spacer(Modifier.height(24.dp))
         Text("Random walk becoming Brownian motion", style = MaterialTheme.typography.titleMedium)
+        MathFormula("S^{(n)}_t = \\frac{1}{\\sqrt{n}} \\sum_{k \\le nt} \\varepsilon_k \\;\\to\\; B_t,\\quad \\varepsilon_k = \\pm 1")
         Text(
             "Each path flips a coin n times and steps ±1/√n. As n grows the paths roughen into Brownian motion " +
                 "and the histogram of the end points settles on N(0, t) (Donsker's theorem).",

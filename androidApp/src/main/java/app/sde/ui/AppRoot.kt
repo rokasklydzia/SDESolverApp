@@ -14,11 +14,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.sde.AppSettings
 
-private val tabs = listOf("Simulate", "Labs", "Solver", "Demos", "Engine")
+private val tabs = listOf("Simulate", "Labs", "Solver", "Demos", "About")
 
 @Composable
-fun AppRoot() {
+fun AppRoot(settings: AppSettings) {
+    if (!settings.introSeen) {
+        IntroScreen(onDone = { settings.introSeen = true })
+        return
+    }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -32,7 +37,7 @@ fun AppRoot() {
                 1 -> LabsScreen()
                 2 -> SolverScreen()
                 3 -> DemosScreen()
-                else -> EngineScreen()
+                else -> AboutScreen(settings)
             }
         }
     }

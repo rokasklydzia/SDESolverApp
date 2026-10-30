@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -138,17 +139,17 @@ private fun IntegralSolver() {
 
     solution.onFailure { ErrorText(it.message ?: "Cannot read these formulas") }
     solution.onSuccess { s ->
-        val answer = s.answerText()
+        val answer = s.answerTex(separator)
         if (answer == null) {
-            Formula("∫₀ᵗ (${s.integrand.format()}) dX = ?")
+            MathFormula(s.questionTex(separator) + " = \\,?")
             Note(
                 if (s.antiderivative == null) "No antiderivative of h in x in the solver's table (powers, exp, sin, cos and polynomials times them), so only the numbers below."
                 else "F(0, X₀) is undefined for this starting point, so only the numbers below.",
             )
         } else {
-            Formula("∫₀ᵗ (${s.integrand.format()}) dX = $answer")
-            s.antiderivative?.let { Note("F(t, x) = ${it.format()}") }
-            s.remainder?.let { Note("R = F_t + (½ − θ)σ²h_x = ${it.format()}") }
+            MathFormula(s.questionTex(separator) + " = " + answer)
+            s.antiderivative?.let { MathFormula("F(t, x) = " + it.tex(), fontSize = 15.sp) }
+            s.remainder?.let { MathFormula("R = F_t + \\left(\\tfrac{1}{2} - \\theta\\right)\\sigma^2 h_x = " + it.tex(), fontSize = 15.sp) }
             Note(if (s.fullyClosed) "Fully closed form." else "The ds-integral is a pathwise Riemann integral and generally has no closed form.")
         }
 
@@ -250,7 +251,8 @@ private fun LinearSdeSolver() {
         if (linear == null) {
             Note("Not linear in x: the drift must be a(t)x + b(t) and the diffusion c(t)x + d(t).")
         } else {
-            for (line in linear.steps()) Formula(line)
+            for (line in linear.stepsTex(separator)) MathFormula(line)
+            if (linear.additiveNoise) Note("X(t) is normal: the noise enters additively, so X(t) is a Wiener integral plus a deterministic function.")
         }
     }
 

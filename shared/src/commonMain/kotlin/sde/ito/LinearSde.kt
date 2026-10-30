@@ -19,6 +19,8 @@ import sde.expr.dependsOn
 import sde.expr.dependsOnState
 import sde.expr.format
 import sde.expr.substitute
+import sde.expr.toTex
+import sde.expr.toTexFactor
 
 /**
  * The explicit solution of a linear SDE dX = (a(t)X + b(t)) dt + (c(t)X + d(t)) dB, X(0) = x0.
@@ -87,6 +89,34 @@ class LinearSde private constructor(
             mean?.let { add("E[X(t)] = ${it.format()}") }
             variance?.let { add("Var[X(t)] = ${it.format()}") }
             add("X(t) is normal: the noise enters additively, so X(t) is a Wiener integral plus a deterministic function.")
+        }
+    }
+
+    /**
+     * [steps] as TeX formulas, one per line, without the closing remark. B stands for B_t and
+     * x0 for X(0).
+     */
+    fun stepsTex(separator: Char = '.'): List<String> = buildList {
+        fun tex(e: Expr) = e.substitute("B", Expr.Var("B_t")).toTex(separator)
+        fun factor(e: Expr) = e.substitute("B", Expr.Var("B_t")).toTexFactor(separator)
+        add("a(t) = ${tex(a)},\\quad b(t) = ${tex(b)},\\quad c(t) = ${tex(c)},\\quad d(t) = ${tex(d)}")
+        val k = exponent?.let { tex(it) } ?: "\\int_0^t ${factor(sub(a, mul(num(0.5), pow(c, num(2.0)))))}\\,ds"
+        val noise = when {
+            additiveNoise -> ""
+            !c.dependsOn(Names.TIME) -> " + ${tex(mul(c, B))}"
+            else -> " + \\int_0^t ${factor(c)}\\,dB_s"
+        }
+        add("\\Phi(t) = " + (phi?.let { tex(it) } ?: "\\exp\\left($k$noise\\right)"))
+        val drift = sub(b, mul(c, d))
+        val parts = buildList {
+            add("x_0")
+            if (drift != Exprs.ZERO) add("\\int_0^t \\Phi(s)^{-1} ${factor(drift.substitute(Names.TIME, Expr.Var("s")))}\\,ds")
+            if (d != Exprs.ZERO) add("\\int_0^t \\Phi(s)^{-1} ${factor(d.substitute(Names.TIME, Expr.Var("s")))}\\,dB_s")
+        }
+        add(if (parts.size == 1) "X_t = x_0\\,\\Phi(t)" else "X_t = \\Phi(t)\\left(${parts.joinToString(" + ")}\\right)")
+        if (additiveNoise) {
+            mean?.let { add("\\mathrm{E}[X_t] = ${tex(it)}") }
+            variance?.let { add("\\mathrm{Var}[X_t] = ${tex(it)}") }
         }
     }
 
