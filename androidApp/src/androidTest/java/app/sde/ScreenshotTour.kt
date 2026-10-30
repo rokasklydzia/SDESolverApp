@@ -99,28 +99,36 @@ class ScreenshotTour {
 
     /**
      * Taps a chip that may be off screen, scrolling its row (the one holding [anchor]) until it
-     * shows. Off-screen chips are not in the accessibility tree, and swipes over the chips don't
-     * reliably scroll on the emulator, so this asks the row itself to scroll.
+     * shows. Off-screen chips are not in the accessibility tree, and UI Automator's swipes don't
+     * reliably scroll the row on the emulator, so this tries the row's own scroll actions and a
+     * slow drag in turn, and reports what each did if the chip never shows.
      */
     private fun tapInRow(text: String, anchor: String) {
-        repeat(5) {
+        val tried = StringBuilder()
+        repeat(5) { attempt ->
             device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
             val roots = listOf(instrumentation.uiAutomation.rootInActiveWindow) +
                 instrumentation.uiAutomation.windows.map { it.root }
             // Both the screen and the chip row scroll; the row is the shorter one.
             val row = roots.flatMap { scrollablesHolding(anchor, it) }
                 .minByOrNull { node -> Rect().also(node::getBoundsInScreen).height() }
-            if (row != null) {
-                row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-            } else {
-                // Fall back to a swipe along the row.
-                val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
-                device.swipe(device.displayWidth * 4 / 5, y, device.displayWidth / 5, y, 40)
+            val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
+            val scrolled = when (attempt % 3) {
+                0 -> row?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                1 -> row?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id)
+                // A slow, finger-like drag through the input system.
+                else -> {
+                    val w = device.displayWidth
+                    val swipe = instrumentation.uiAutomation.executeShellCommand("input swipe ${w * 4 / 5} $y ${w / 5} $y 800")
+                    ParcelFileDescriptor.AutoCloseInputStream(swipe).use { it.readBytes() }
+                    null
+                }
             }
+            tried.append(" [${row?.className} ${row?.actionList?.map { it.id }} -> $scrolled]")
             Thread.sleep(1_000)
         }
         device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
-        error("\"$text\" is not on screen")
+        error("\"$text\" is not on screen;$tried")
     }
 
     /** The scrollable nodes under [node] whose subtree shows [text]. */
