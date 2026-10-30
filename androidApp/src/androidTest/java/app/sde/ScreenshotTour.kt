@@ -1,5 +1,6 @@
 package app.sde
 
+import android.graphics.Rect
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
@@ -98,21 +99,34 @@ class ScreenshotTour {
     private fun tapInRow(text: String, anchor: String) {
         repeat(5) {
             device.wait(Until.findObject(By.text(text)), 2_000)?.let { it.click(); return }
-            val row = scrollableParentOf(anchor, instrumentation.uiAutomation.rootInActiveWindow)
-                ?: error("No row holds \"$anchor\"")
-            row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            val roots = listOf(instrumentation.uiAutomation.rootInActiveWindow) +
+                instrumentation.uiAutomation.windows.map { it.root }
+            // Both the screen and the chip row scroll; the row is the shorter one.
+            val row = roots.flatMap { scrollablesHolding(anchor, it) }
+                .minByOrNull { node -> Rect().also(node::getBoundsInScreen).height() }
+            if (row != null) {
+                row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            } else {
+                // Fall back to a swipe along the row.
+                val y = device.findObject(By.text(anchor))?.visibleCenter?.y ?: error("\"$anchor\" is not on screen")
+                device.swipe(device.displayWidth * 4 / 5, y, device.displayWidth / 5, y, 40)
+            }
             Thread.sleep(1_000)
         }
         device.dumpWindowHierarchy(File(out, "hierarchy.xml"))
         error("\"$text\" is not on screen")
     }
 
-    private fun scrollableParentOf(text: String, node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        if (node == null) return null
+    /** The scrollable nodes under [node] whose subtree shows [text]. */
+    private fun scrollablesHolding(text: String, node: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
+        if (node == null) return emptyList()
         val children = (0 until node.childCount).mapNotNull { node.getChild(it) }
-        if (node.isScrollable && children.any { it.text?.toString() == text }) return node
-        return children.firstNotNullOfOrNull { scrollableParentOf(text, it) }
+        val below = children.flatMap { scrollablesHolding(text, it) }
+        return if (node.isScrollable && shows(text, node)) below + node else below
     }
+
+    private fun shows(text: String, node: AccessibilityNodeInfo): Boolean =
+        node.text?.toString() == text || (0 until node.childCount).any { i -> node.getChild(i)?.let { shows(text, it) } == true }
 
     private fun shot(name: String) {
         device.takeScreenshot(File(out, "$name.png"))
