@@ -20,6 +20,10 @@ demo battery -e level 100 -e plugged false
 demo network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4
 demo notifications -e visible false
 
+# Under load the emulator's launcher can stop responding, and its "isn't responding" dialog
+# would cover the app. Don't show such dialogs.
+adb shell settings put global hide_error_dialogs 1
+
 # The emulator's speed varies between runners, so give the tour up to three attempts.
 for attempt in 1 2 3; do
   adb shell am force-stop "$package"

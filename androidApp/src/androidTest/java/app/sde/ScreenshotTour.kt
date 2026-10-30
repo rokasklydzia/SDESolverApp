@@ -76,6 +76,7 @@ class ScreenshotTour {
     }
 
     private fun tap(text: String) {
+        dismissNotRespondingDialog()
         // Generous: drawing a thousand paths in software rendering keeps the emulator busy.
         val target = device.wait(Until.findObject(By.text(text)), 30_000)
         if (target == null) {
@@ -83,6 +84,11 @@ class ScreenshotTour {
             error("\"$text\" is not on screen")
         }
         target.click()
+    }
+
+    /** Answers "Wait" if a slow system app (usually the launcher) shows "isn't responding". */
+    private fun dismissNotRespondingDialog() {
+        device.findObject(By.res("android", "aerr_wait"))?.click()
     }
 
     /** Waits while a screen shows "Simulating…" instead of its chart; the emulator is slow. */
