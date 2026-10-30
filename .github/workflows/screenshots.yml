@@ -1,0 +1,82 @@
+name: Screenshots
+
+# Runs the app on an emulator and commits the README's screenshots and animation to
+# docs/screenshots on the branch it ran on. Start it from the Actions tab after a UI change.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - androidApp/src/androidTest/**
+      - .github/workflows/screenshots.yml
+      - .github/scripts/screenshots.sh
+
+permissions:
+  contents: write
+
+# A newer push replaces a running tour, so two runs never push screenshots at once.
+concurrency:
+  group: screenshots-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the app and the tour
+        run: ./gradlew :androidApp:assembleDebug :androidApp:assembleDebugAndroidTest
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Take the screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          disable-animations: false
+          script: bash .github/scripts/screenshots.sh
+
+      - name: Scale the screenshots and make the GIF
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          mkdir -p docs/screenshots
+          for f in build/screenshots/raw/*.png; do
+            ffmpeg -loglevel error -y -i "$f" -vf scale=540:-1:flags=lanczos "docs/screenshots/$(basename "$f")"
+          done
+          ffmpeg -loglevel error -y -ss 1.5 -t 8 -i build/screenshots/raw/simulate.mp4 \
+            -vf "fps=15,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
+            docs/screenshots/simulate.gif
+          ls -l docs/screenshots
+
+      - name: Commit the screenshots
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the README screenshots"
+          git push
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: build/screenshots/
