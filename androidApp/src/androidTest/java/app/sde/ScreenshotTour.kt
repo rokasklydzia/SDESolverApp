@@ -53,17 +53,17 @@ class ScreenshotTour {
             tap("Variation")
             Thread.sleep(7_000)
             shot("03-variation")
-            // These two simulate many paths, which takes longer than an 8 second run on the
-            // emulator; looping would start a fresh batch every run, so stop it first.
+            // These two simulate many paths and start their run once they have them. Without
+            // looping the run stops at its end, with every curve drawn.
             tap("Martingales")
             tap("Loop")
             settle()
-            Thread.sleep(2_000)
+            Thread.sleep(9_000)
             shot("04-martingales")
             tapLastInRow(anchor = "Martingales", arrived = "E[g(X(T))]")
             tap("Loop")
             settle()
-            Thread.sleep(2_000)
+            Thread.sleep(9_000)
             shot("05-monte-carlo")
 
             tap("Solver")

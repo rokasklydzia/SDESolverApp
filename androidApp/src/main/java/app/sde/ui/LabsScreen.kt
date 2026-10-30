@@ -371,7 +371,6 @@ private fun MartingaleLab() {
     var x0Text by remember { mutableStateOf("0") }
     var seed by remember { mutableLongStateOf(1L) }
     val playback = rememberPlayback(PLAYBACK_STEPS)
-    PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Martingale checker", style = MaterialTheme.typography.titleMedium)
     Note(
@@ -383,12 +382,21 @@ private fun MartingaleLab() {
     val setup = remember(drift, diffusion, f, compensator, x0Text) {
         runCatching { MartingaleCheck(drift, diffusion, f, compensator) to parseNumber(x0Text) }
     }
-    var simulation by remember { mutableStateOf<MartingaleRun?>(null) }
+    // A new seed keeps the last run on screen until the next one is ready; new formulas clear it.
+    var simulation by remember(setup) { mutableStateOf<MartingaleRun?>(null) }
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(setup, seed) {
-        simulation = null
         val (check, x0) = setup.getOrNull() ?: return@LaunchedEffect
-        simulation = check.simulate(x0, TimeGrid(HORIZON, MARTINGALE_STEPS), MARTINGALE_PATHS, seed)
+        simulating = true
+        try {
+            simulation = check.simulate(x0, TimeGrid(HORIZON, MARTINGALE_STEPS), MARTINGALE_PATHS, seed)
+            playback.restart()
+        } finally {
+            simulating = false
+        }
     }
+    // Fresh paths for each looped run, unless the last batch is still being simulated.
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     setup.onFailure { ErrorText(it.message ?: "Cannot read these formulas") }
     setup.onSuccess { (check, _) ->
@@ -700,7 +708,6 @@ private fun MonteCarloLab() {
     var payoffText by remember { mutableStateOf("max(x - 100, 0)") }
     var seed by remember { mutableLongStateOf(1L) }
     val playback = rememberPlayback(PLAYBACK_STEPS)
-    PlaybackClock(playback, onRunFinished = { seed++ })
 
     Text("Monte Carlo", style = MaterialTheme.typography.titleMedium)
     Note(
@@ -711,12 +718,20 @@ private fun MonteCarloLab() {
     Spacer(Modifier.height(8.dp))
 
     val payoff = remember(payoffText) { runCatching { Evaluator.compile(Parser.parse(payoffText)) } }
-    var result by remember { mutableStateOf<MonteCarloLabResult?>(null) }
+    // As in the martingale lab: a new seed keeps the last estimate on screen, a new question clears it.
+    var result by remember(model, payoff) { mutableStateOf<MonteCarloLabResult?>(null) }
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(model, payoff, seed) {
-        result = null
         val g = payoff.getOrNull() ?: return@LaunchedEffect
-        result = runMonteCarloLab(model, g, seed)
+        simulating = true
+        try {
+            result = runMonteCarloLab(model, g, seed)
+            playback.restart()
+        } finally {
+            simulating = false
+        }
     }
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     payoff.onFailure { ErrorText(it.message ?: "Cannot read this formula") }
     val current = result

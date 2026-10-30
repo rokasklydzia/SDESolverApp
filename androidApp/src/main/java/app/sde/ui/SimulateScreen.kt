@@ -94,14 +94,21 @@ fun SimulateScreen() {
     var autoFit by remember(model, component, custom) { mutableStateOf(true) }
     val playback = rememberPlayback(STEPS)
 
+    var simulating by remember { mutableStateOf(false) }
     LaunchedEffect(process, grid, seed, component) {
-        val fresh = Ensemble.simulate(process, grid, ENSEMBLE_PATHS, seed, component)
-        ensemble = fresh
-        if (autoFit || viewport.tMax > grid.horizon) {
-            viewport = Viewport.fit(0.0..grid.horizon, fresh.bandRange())
+        simulating = true
+        try {
+            val fresh = Ensemble.simulate(process, grid, ENSEMBLE_PATHS, seed, component)
+            ensemble = fresh
+            if (autoFit || viewport.tMax > grid.horizon) {
+                viewport = Viewport.fit(0.0..grid.horizon, fresh.bandRange())
+            }
+        } finally {
+            simulating = false
         }
     }
-    PlaybackClock(playback, onRunFinished = { seed++ })
+    // A slow phone may still be simulating when a run ends; then it replays the paths it has.
+    PlaybackClock(playback, onRunFinished = { if (!simulating) seed++ })
 
     Column(
         Modifier

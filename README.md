@@ -90,7 +90,7 @@ Run it from the Actions tab after a UI change to refresh them.
   linear SDEs dX = (aX + b) dt + (cX + d) dB, with mean and variance when the noise is additive.
 - **Demos:** a scrolling white noise oscilloscope with its integral, and random walks turning into
   Brownian motion as the number of steps grows.
-- **Engine:** the speed test and the list of models.
+- **About:** light, dark or the phone's theme, the speed test and the list of models.
 
 Charts are drawn by hand on a Compose `Canvas`; the engine side (`sde.live.Ensemble`,
 `sde.chart.Viewport`, `sde.chart.Ticks`) is plain Kotlin with unit tests.

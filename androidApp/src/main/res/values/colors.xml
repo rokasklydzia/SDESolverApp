@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#121A2B</color>
+    <!-- The window behind the app before Compose draws, matching SdeTheme's background. -->
+    <color name="window_background">#FAFBFD</color>
+</resources>
