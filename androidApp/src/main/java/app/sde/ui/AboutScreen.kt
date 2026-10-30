@@ -13,6 +13,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,9 @@ fun AboutScreen(settings: AppSettings) {
                 "Made as a project for a course in stochastic analysis.",
             style = MaterialTheme.typography.bodyMedium,
         )
+
+        Spacer(Modifier.height(4.dp))
+        TextButton(onClick = { settings.introSeen = false }) { Text("Show the intro again") }
 
         SectionTitle("Appearance")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

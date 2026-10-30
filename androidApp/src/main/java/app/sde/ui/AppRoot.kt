@@ -20,6 +20,10 @@ private val tabs = listOf("Simulate", "Labs", "Solver", "Demos", "About")
 
 @Composable
 fun AppRoot(settings: AppSettings) {
+    if (!settings.introSeen) {
+        IntroScreen(onDone = { settings.introSeen = true })
+        return
+    }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {

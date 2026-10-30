@@ -1,5 +1,6 @@
 package app.sde
 
+import android.content.Context
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
@@ -31,6 +32,9 @@ class ScreenshotTour {
         // The charts animate without pause, so the screen is never idle: wait for it only briefly
         // before each query, or the taps land seconds late. Not at all leaves the view stale.
         Configurator.getInstance().waitForIdleTimeout = 1_000
+        // Start past the first-launch intro.
+        instrumentation.targetContext.getSharedPreferences(AppSettings.PREFERENCES, Context.MODE_PRIVATE)
+            .edit().putBoolean(AppSettings.INTRO_SEEN, true).commit()
         ActivityScenario.launch(MainActivity::class.java).use {
             device.wait(Until.hasObject(By.text("Simulate")), 20_000)
 
