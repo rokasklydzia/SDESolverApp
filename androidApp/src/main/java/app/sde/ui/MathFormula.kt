@@ -81,7 +81,7 @@ private class Typesetter(val measurer: TextMeasurer, val em: Float, val density:
         is MathNode.Space -> LaidOut(node.em * em * scale, 0f, 0f) { _, _, _ -> }
         is MathNode.Scripts -> scripts(layout(node.base, scale), node.sup, node.sub, scale, operator = false)
         is MathNode.BigOperator -> scripts(
-            glyphs(MathNode.Glyphs(node.symbol, Kind.UPRIGHT), scale * 1.45f),
+            glyphs(MathNode.Glyphs(node.symbol, Kind.UPRIGHT), scale * 1.75f),
             node.upper,
             node.lower,
             scale,
@@ -150,7 +150,8 @@ private class Typesetter(val measurer: TextMeasurer, val em: Float, val density:
             if (gap < 0.12f * unit) supShift += 0.12f * unit - gap
         }
         val scriptWidth = maxOf(sup?.width ?: 0f, sub?.width ?: 0f)
-        val trailing = 0.06f * unit
+        // The operand of ∫ or Σ starts a little after its limits.
+        val trailing = (if (operator) 0.16f else 0.06f) * unit
         return LaidOut(
             base.width + scriptWidth + trailing,
             maxOf(base.ascent, sup?.let { supShift + it.ascent } ?: 0f),
