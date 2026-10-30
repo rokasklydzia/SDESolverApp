@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import sde.chart.Ticks
+import sde.expr.Expr
+import sde.expr.toTex
 import java.text.DecimalFormatSymbols
 
 // Small pieces shared by the Simulate and Labs screens.
@@ -72,7 +74,11 @@ fun LegendRows(items: List<Pair<Color, String>>) {
     }
 }
 
-private val separator: Char by lazy { DecimalFormatSymbols.getInstance().decimalSeparator }
+/** The phone's decimal mark, e.g. a comma in Lithuanian. */
+internal val separator: Char by lazy { DecimalFormatSymbols.getInstance().decimalSeparator }
+
+/** TeX for a formula, with the phone's decimal mark. */
+fun Expr.tex(): String = toTex(separator)
 
 fun fmt(value: Double, decimals: Int = 3): String = Ticks.formatFixed(value, decimals, separator)
 

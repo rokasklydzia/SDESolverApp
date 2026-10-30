@@ -17,6 +17,9 @@ import sde.expr.Variable
 import sde.expr.dependsOnState
 import sde.expr.format
 import sde.expr.substitute
+import sde.expr.toTex
+import sde.expr.toTexFactor
+import sde.expr.withState
 import sde.model.CustomSde
 import sde.model.solveAlong
 import sde.montecarlo.TimeGrid
@@ -93,6 +96,29 @@ class StochasticIntegral(
             .replace(Regex("\\bx\\b"), "X_s").replace(Regex("\\bt\\b"), "s")
         val sign = if (negative) "+" else "-"
         return if (closed == Exprs.ZERO) "${if (negative) "" else "-"}∫₀ᵗ ($body) ds" else "$main $sign ∫₀ᵗ ($body) ds"
+    }
+
+    /** The question as TeX, e.g. ∫₀ᵗ X_s³ dX_s, with ∘ for Stratonovich and d̂ for the backward integral. */
+    fun questionTex(separator: Char = '.'): String {
+        val h = integrand.withState("X_s").substitute(Names.TIME, Expr.Var("s")).toTexFactor(separator)
+        val differential = when (point) {
+            EvaluationPoint.LEFT -> "dX_s"
+            EvaluationPoint.MIDPOINT -> "\\circ dX_s"
+            EvaluationPoint.RIGHT -> "d\u0302X_s"
+        }
+        return "\\int_0^t $h\\,$differential"
+    }
+
+    /** [answerText] as TeX, with X_t for the state and the leftover integral over s. */
+    fun answerTex(separator: Char = '.'): String? {
+        val closed = closedPart ?: return null
+        val main = closed.withState("X_t").toTex(separator)
+        val rest = leftover ?: return main
+        val negative = rest is Expr.Neg || Exprs.hasNegativeCoefficient(rest)
+        val body = (if (negative) Exprs.neg(rest) else rest).withState("X_s").substitute(Names.TIME, Expr.Var("s"))
+        val integral = "\\int_0^t " + body.toTexFactor(separator) + "\\,ds"
+        val sign = if (negative) "+" else "-"
+        return if (closed == Exprs.ZERO) "${if (negative) "" else "-"}$integral" else "$main $sign $integral"
     }
 
     /**

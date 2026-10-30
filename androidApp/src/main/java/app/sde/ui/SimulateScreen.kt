@@ -35,7 +35,9 @@ import sde.catalog.Parameter
 import sde.catalog.PresetModel
 import sde.chart.Ticks
 import sde.chart.Viewport
+import sde.expr.differentialTex
 import sde.expr.format
+import sde.expr.withState
 import sde.live.Ensemble
 import sde.model.CustomSde
 import sde.model.EulerMaruyama
@@ -123,6 +125,12 @@ fun SimulateScreen() {
             FilterChip(selected = custom, onClick = { custom = true; scheme = EulerMaruyama; playback.restart() }, label = { Text("Your own SDE") })
         }
         Spacer(Modifier.height(6.dp))
+        val typed = (lastCustom as? ScalarProcess)?.sde as? CustomSde
+        if (!custom) {
+            MathFormula(model.equation)
+        } else if (typed != null) {
+            MathFormula(differentialTex("dX_t", typed.driftExpr.withState("X_t"), typed.diffusionExpr.withState("X_t"), separator = separator))
+        }
         Text(
             if (custom) "dX = μ(t, X) dt + σ(t, X) dB with your own formulas. Every other name in them becomes a parameter with a slider." else model.summary,
             style = MaterialTheme.typography.bodySmall,
