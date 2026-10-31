@@ -1,19 +1,28 @@
 package app.sde.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -49,8 +58,49 @@ fun Formula(text: String) {
 }
 
 @Composable
-fun Note(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+fun Note(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+}
+
+/**
+ * A titled card for one part of a solver: what it calculates, its inputs or its result. The
+ * result is [highlighted] in the theme's primary container colour.
+ */
+@Composable
+fun SolverCard(title: String, highlighted: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) scheme.primaryContainer else scheme.surfaceContainerHigh,
+            contentColor = if (highlighted) scheme.onPrimaryContainer else scheme.onSurface,
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                title.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (highlighted) scheme.onPrimaryContainer else scheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            content()
+        }
+    }
+}
+
+/** A numbered input, as in "① Integrand h(t, x)". */
+@Composable
+fun StepLabel(number: Int, text: String) {
+    Row(Modifier.padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$number", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = MaterialTheme.typography.titleSmall)
+    }
 }
 
 @Composable
