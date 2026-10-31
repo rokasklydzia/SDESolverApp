@@ -92,33 +92,47 @@ class LinearSde private constructor(
         }
     }
 
-    /**
-     * [steps] as TeX formulas, one per line, without the closing remark. B stands for B_t and
-     * x0 for X(0).
-     */
-    fun stepsTex(separator: Char = '.'): List<String> = buildList {
+    /** The pieces of the solution as TeX, for display: the coefficients, Φ, X_t, and E and Var when known. */
+    class TexSolution(
+        val coefficients: String,
+        val phi: String,
+        val solution: String,
+        val mean: String?,
+        val variance: String?,
+    ) {
+        val lines: List<String> get() = listOfNotNull(coefficients, phi, solution, mean, variance)
+    }
+
+    /** [steps] as TeX. B stands for B_t and x0 for X(0). */
+    fun texSolution(separator: Char = '.'): TexSolution {
         fun tex(e: Expr) = e.substitute("B", Expr.Var("B_t")).toTex(separator)
         fun factor(e: Expr) = e.substitute("B", Expr.Var("B_t")).toTexFactor(separator)
-        add("a(t) = ${tex(a)},\\quad b(t) = ${tex(b)},\\quad c(t) = ${tex(c)},\\quad d(t) = ${tex(d)}")
+        val coefficients = "a(t) = ${tex(a)},\\quad b(t) = ${tex(b)},\\quad c(t) = ${tex(c)},\\quad d(t) = ${tex(d)}"
         val k = exponent?.let { tex(it) } ?: "\\int_0^t ${factor(sub(a, mul(num(0.5), pow(c, num(2.0)))))}\\,ds"
         val noise = when {
             additiveNoise -> ""
             !c.dependsOn(Names.TIME) -> " + ${tex(mul(c, B))}"
             else -> " + \\int_0^t ${factor(c)}\\,dB_s"
         }
-        add("\\Phi(t) = " + (phi?.let { tex(it) } ?: "\\exp\\left($k$noise\\right)"))
+        val phiLine = "\\Phi(t) = " + (phi?.let { tex(it) } ?: "\\exp\\left($k$noise\\right)")
         val drift = sub(b, mul(c, d))
         val parts = buildList {
             add("x_0")
             if (drift != Exprs.ZERO) add("\\int_0^t \\Phi(s)^{-1} ${factor(drift.substitute(Names.TIME, Expr.Var("s")))}\\,ds")
             if (d != Exprs.ZERO) add("\\int_0^t \\Phi(s)^{-1} ${factor(d.substitute(Names.TIME, Expr.Var("s")))}\\,dB_s")
         }
-        add(if (parts.size == 1) "X_t = x_0\\,\\Phi(t)" else "X_t = \\Phi(t)\\left(${parts.joinToString(" + ")}\\right)")
-        if (additiveNoise) {
-            mean?.let { add("\\mathrm{E}[X_t] = ${tex(it)}") }
-            variance?.let { add("\\mathrm{Var}[X_t] = ${tex(it)}") }
-        }
+        val solution = if (parts.size == 1) "X_t = x_0\\,\\Phi(t)" else "X_t = \\Phi(t)\\left(${parts.joinToString(" + ")}\\right)"
+        return TexSolution(
+            coefficients = coefficients,
+            phi = phiLine,
+            solution = solution,
+            mean = if (additiveNoise) mean?.let { "\\mathrm{E}[X_t] = ${tex(it)}" } else null,
+            variance = if (additiveNoise) variance?.let { "\\mathrm{Var}[X_t] = ${tex(it)}" } else null,
+        )
     }
+
+    /** [texSolution] as one formula per line. */
+    fun stepsTex(separator: Char = '.'): List<String> = texSolution(separator).lines
 
     companion object {
         private val B = Expr.Var("B")
